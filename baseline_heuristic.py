@@ -24,6 +24,7 @@ ALL_TASKS = [
     "task_004",
     "task_005",
     "task_006",
+    "task_007",
 ]
 
 
@@ -167,6 +168,30 @@ def run_heuristic_episode(task_id: str, seed: int = 42) -> float:
         )
         session = env._get_session()
         return session.last_score if session and session.last_score is not None else 0.0
+
+    # Step 5: Check for scheduler issue (loss stagnates after initial progress)
+    if obs.training_loss_history and len(obs.training_loss_history) >= 10:
+        early_loss = sum(obs.training_loss_history[:3]) / 3
+        mid_loss = sum(obs.training_loss_history[5:8]) / 3
+        late_loss = sum(v for v in obs.training_loss_history[-3:] if v != float("inf")) / 3
+        improving_then_stuck = early_loss > mid_loss and abs(late_loss - mid_loss) < 0.3
+        if improving_then_stuck and obs.current_config.learning_rate < 0.01:
+            obs = env.step(
+                MLTrainingAction(
+                    action_type="modify_config",
+                    target="learning_rate",
+                    value=0.001,
+                )
+            )
+            obs = env.step(MLTrainingAction(action_type="restart_run"))
+            obs = env.step(
+                MLTrainingAction(
+                    action_type="mark_diagnosed",
+                    diagnosis="scheduler_misconfigured",
+                )
+            )
+            session = env._get_session()
+            return session.last_score if session and session.last_score is not None else 0.0
 
     # Fallback
     obs = env.step(

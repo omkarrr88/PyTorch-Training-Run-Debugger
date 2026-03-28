@@ -33,7 +33,7 @@ class TestHealthEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ready"
-        assert data["tasks"] == 6
+        assert data["tasks"] == 7
 
     def test_task_count_matches_all_tasks(self, client):
         resp = client.get("/health")
@@ -48,7 +48,7 @@ class TestTasksEndpoint:
         resp = client.get("/tasks")
         assert resp.status_code == 200
         tasks = resp.json()
-        assert len(tasks) == 6
+        assert len(tasks) == 7
         ids = [t["id"] for t in tasks]
         assert "task_001" in ids
         assert "task_006" in ids
@@ -64,7 +64,7 @@ class TestTasksEndpoint:
         resp = client.get("/tasks")
         for task in resp.json():
             assert "difficulty" in task
-            assert task["difficulty"] in ("easy", "medium", "hard")
+            assert task["difficulty"] in ("easy", "medium", "hard", "medium-hard")
             assert "max_steps" in task
             assert task["max_steps"] > 0
 
@@ -120,7 +120,7 @@ class TestBaselineEndpoint:
         data = resp.json()
         assert "scores" in data
         scores = data["scores"]
-        assert len(scores) == 6
+        assert len(scores) == 7
         for task_id, score in scores.items():
             assert 0.0 <= score <= 1.0, f"{task_id}: {score}"
 
@@ -200,7 +200,7 @@ class TestGetScore:
 class TestRunBaselineSync:
     def test_returns_all_tasks(self):
         scores = _run_baseline_sync()
-        assert len(scores) == 6
+        assert len(scores) == 7
         for task_id in [
             "task_001",
             "task_002",
@@ -208,6 +208,7 @@ class TestRunBaselineSync:
             "task_004",
             "task_005",
             "task_006",
+            "task_007",
         ]:
             assert task_id in scores
             assert 0.0 <= scores[task_id] <= 1.0

@@ -5,14 +5,15 @@ runtime: fastapi
 app: server.app:app
 port: 7860
 
-version: "1.0.0"
+version: "1.1.0"
 description: |
   PyTorch-native fault injection engine for training failure debugging.
   An AI agent investigates, diagnoses, fixes, and verifies broken
-  training runs using real torch.nn.Module models, torch.autograd
+  training runs using real torch.nn.Module models (CNN + MLP), torch.autograd
   gradients, state_dict() weight inspection, and PyTorch code-level
-  debugging. 6 tasks across 3 difficulty tiers with context-gated
-  reward shaping and a live diagnostic dashboard.
+  debugging. 7 tasks across 3 difficulty tiers with context-gated
+  reward shaping, difficulty scaling (1-5), confusion matrices, and
+  a live diagnostic dashboard.
 framework: openenv
 tags:
   - ml-debugging
@@ -25,7 +26,7 @@ tags:
 
 observation_space:
   type: MLTrainingObservation
-  description: "Training run snapshot with progressive reveal — gradients, weights, data stats, model modes, and code snippets revealed on inspection"
+  description: "Training run snapshot with progressive reveal — gradients, weights, data stats, model modes, code snippets, and confusion matrices revealed on inspection"
 
 action_space:
   type: MLTrainingAction
@@ -70,6 +71,13 @@ tasks:
     param_ranges:
       bug_type: [eval_mode, detach_loss, zero_grad_missing, inplace_relu]
 
+  - id: task_007
+    difficulty: medium-hard
+    max_steps: 25
+    param_ranges:
+      scheduler_gamma: [0.01, 0.001, 0.0001]
+      scheduler_step_size: [2, 3, 5]
+
 reward:
   range: [-1.0, 1.0]
   shaped: true
@@ -87,3 +95,6 @@ endpoints:
   health: "GET /health"
   dashboard: "GET /dashboard"
   validation_report: "GET /validation-report"
+  curriculum: "GET /curriculum"
+  leaderboard: "GET /leaderboard"
+  replay: "GET /replay/{episode_id}"

@@ -188,6 +188,24 @@ def grade_task_006(state: EpisodeState, scenario: ScenarioParams) -> float:
     return min(1.0, max(0.0, score))
 
 
+def grade_task_007(state: EpisodeState, scenario: ScenarioParams) -> float:
+    """Grade Task 7 — LR Scheduler Misconfigured (medium-hard). Spec extension."""
+    score = 0.0
+
+    if state.gradients_inspected:
+        score += 0.05
+    if state.data_inspected:
+        score += 0.05
+    if _has_action(state, "modify_config"):
+        score += 0.25
+    if state.restart_after_fix:
+        score += 0.25
+    if _correct_diagnosis(state, scenario):
+        score += 0.40
+
+    return min(1.0, max(0.0, score))
+
+
 # Registry mapping task IDs to grader functions
 GRADERS = {
     "task_001": grade_task_001,
@@ -196,6 +214,7 @@ GRADERS = {
     "task_004": grade_task_004,
     "task_005": grade_task_005,
     "task_006": grade_task_006,
+    "task_007": grade_task_007,
 }
 
 

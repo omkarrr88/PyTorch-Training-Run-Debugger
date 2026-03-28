@@ -43,6 +43,37 @@ class SimpleCNN(nn.Module):
         return x
 
 
+class SimpleMLP(nn.Module):
+    """3-layer MLP for CIFAR-10 style classification. ~20K params.
+
+    Second architecture — randomly selected alongside SimpleCNN at reset().
+    """
+
+    def __init__(self, input_dim: int = 3072, hidden_dim: int = 128, num_classes: int = 10) -> None:
+        super().__init__()
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.bn2 = nn.BatchNorm1d(hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, num_classes)
+        self.relu = nn.ReLU()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.flatten(x)
+        x = self.relu(self.bn1(self.fc1(x)))
+        x = self.relu(self.bn2(self.fc2(x)))
+        x = self.fc3(x)
+        return x
+
+
+def _create_model(model_type: str) -> nn.Module:
+    """Create a model by type string."""
+    if model_type == "mlp":
+        return SimpleMLP()
+    return SimpleCNN()
+
+
 def create_model_and_inject_fault(
     scenario: ScenarioParams,
 ) -> tuple[nn.Module, dict]:
@@ -53,7 +84,7 @@ def create_model_and_inject_fault(
     """
     torch.manual_seed(scenario.seed)
 
-    model = SimpleCNN()
+    model = _create_model(scenario.model_type)
     criterion = nn.CrossEntropyLoss()
     info: dict = {}
 
@@ -143,6 +174,24 @@ def create_model_and_inject_fault(
         loss.backward()
         optimizer.step()
 
+    elif scenario.root_cause.value == "scheduler_misconfigured":
+        # Normal model, but with an aggressively decaying LR scheduler
+        model.train()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=scenario.scheduler_step_size,
+            gamma=scenario.scheduler_gamma,
+        )
+        for _ in range(3):
+            optimizer.zero_grad()
+            output = model(batch_x)
+            loss = criterion(output, batch_y)
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+        info["final_lr"] = optimizer.param_groups[0]["lr"]
+
     return model, info
 
 
@@ -156,12 +205,20 @@ def extract_gradient_stats(
     the configured layer.
     """
     stats: list[GradientStats] = []
-    named_layers = [
-        ("conv1", model.conv1),
-        ("conv2", model.conv2),
-        ("conv3", model.conv3),
-        ("fc", model.fc),
-    ]
+
+    if isinstance(model, SimpleMLP):
+        named_layers = [
+            ("fc1", model.fc1),
+            ("fc2", model.fc2),
+            ("fc3", model.fc3),
+        ]
+    else:
+        named_layers = [
+            ("conv1", model.conv1),
+            ("conv2", model.conv2),
+            ("conv3", model.conv3),
+            ("fc", model.fc),
+        ]
 
     for layer_name, layer in named_layers:
         norms: list[float] = []

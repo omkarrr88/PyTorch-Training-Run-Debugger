@@ -17,8 +17,8 @@ from ml_training_debugger.models import (
 
 
 class TestRootCauseDiagnosis:
-    def test_all_six_values_exist(self):
-        assert len(RootCauseDiagnosis) == 6
+    def test_all_values_exist(self):
+        assert len(RootCauseDiagnosis) == 7
 
     def test_values_are_strings(self):
         for d in RootCauseDiagnosis:

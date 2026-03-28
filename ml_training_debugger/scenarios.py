@@ -33,6 +33,10 @@ class ScenarioParams:
     error_log: Optional[str] = None
     gpu_memory_used_gb: float = 6.2
     max_steps: int = 20
+    model_type: str = "cnn"
+    difficulty_level: int = 3
+    scheduler_gamma: float = 0.1
+    scheduler_step_size: int = 10
 
 
 def _task_seed(task_id: str, seed: int) -> int:
@@ -47,12 +51,20 @@ def _choose(options: list, rng: torch.Generator) -> object:
     return options[idx]
 
 
-def sample_scenario(task_id: str, seed: int = 42) -> ScenarioParams:
+def _pick_model_type(rng: torch.Generator) -> str:
+    """Randomly pick CNN or MLP architecture."""
+    return str(_choose(["cnn", "mlp"], rng))
+
+
+def sample_scenario(
+    task_id: str, seed: int = 42, difficulty_level: int = 3
+) -> ScenarioParams:
     """Sample a ScenarioParams for the given task.
 
     Args:
-        task_id: One of task_001 through task_006.
+        task_id: One of task_001 through task_007.
         seed: Base seed for reproducibility.
+        difficulty_level: 1 (easy signals) to 5 (max ambiguity). Default 3.
 
     Returns:
         ScenarioParams with randomized fault parameters.
@@ -73,6 +85,8 @@ def sample_scenario(task_id: str, seed: int = 42) -> ScenarioParams:
             learning_rate=float(lr),
             error_log=f"RuntimeError: Loss is NaN at epoch 12 (lr={lr})",
             max_steps=20,
+            model_type=_pick_model_type(rng),
+            difficulty_level=difficulty_level,
         )
 
     if task_id == "task_002":
@@ -89,6 +103,8 @@ def sample_scenario(task_id: str, seed: int = 42) -> ScenarioParams:
                 "early learning rate warmup may still be in effect."
             ),
             max_steps=20,
+            model_type=_pick_model_type(rng),
+            difficulty_level=difficulty_level,
         )
 
     if task_id == "task_003":
@@ -104,6 +120,8 @@ def sample_scenario(task_id: str, seed: int = 42) -> ScenarioParams:
                 "model capacity."
             ),
             max_steps=25,
+            model_type=_pick_model_type(rng),
+            difficulty_level=difficulty_level,
         )
 
     if task_id == "task_004":
@@ -120,6 +138,8 @@ def sample_scenario(task_id: str, seed: int = 42) -> ScenarioParams:
                 "up training. Re-enabling may improve generalization."
             ),
             max_steps=25,
+            model_type=_pick_model_type(rng),
+            difficulty_level=difficulty_level,
         )
 
     if task_id == "task_005":
@@ -131,12 +151,14 @@ def sample_scenario(task_id: str, seed: int = 42) -> ScenarioParams:
             seed=effective_seed,
             red_herring_intensity=float(intensity),
             red_herring_spike_layer=str(spike_layer),
-            gpu_memory_used_gb=14.56,  # 91% of 16GB — red herring
+            gpu_memory_used_gb=14.56,
             error_log=(
                 "Warning: GPU memory pressure detected, consider reducing "
                 "batch size or enabling gradient checkpointing"
             ),
             max_steps=30,
+            model_type="cnn",  # CNN always for BatchNorm eval — MLP BatchNorm1d behaves differently
+            difficulty_level=difficulty_level,
         )
 
     if task_id == "task_006":
@@ -150,6 +172,23 @@ def sample_scenario(task_id: str, seed: int = 42) -> ScenarioParams:
             bug_type=str(bug),
             notes="Try adjusting the learning rate schedule.",
             max_steps=30,
+            model_type="cnn",  # Code templates reference CNN training — keep CNN for consistency
+            difficulty_level=difficulty_level,
+        )
+
+    if task_id == "task_007":
+        gamma = _choose([0.01, 0.001, 0.0001], rng)
+        step_size = _choose([2, 3, 5], rng)
+        return ScenarioParams(
+            task_id=task_id,
+            root_cause=RootCauseDiagnosis.SCHEDULER_MISCONFIGURED,
+            seed=effective_seed,
+            scheduler_gamma=float(gamma),
+            scheduler_step_size=int(step_size),
+            notes="LR scheduler was recently added to improve convergence.",
+            max_steps=25,
+            model_type=_pick_model_type(rng),
+            difficulty_level=difficulty_level,
         )
 
     raise ValueError(f"Unknown task_id: {task_id}")

@@ -23,6 +23,7 @@ class RootCauseDiagnosis(str, enum.Enum):
     OVERFITTING = "overfitting"
     BATCHNORM_EVAL_MODE = "batchnorm_eval_mode"
     CODE_BUG = "code_bug"
+    SCHEDULER_MISCONFIGURED = "scheduler_misconfigured"
 
 
 VALID_DIAGNOSES: set[str] = {d.value for d in RootCauseDiagnosis}
@@ -79,6 +80,7 @@ class DataBatchStats(BaseModel):
     class_overlap_score: float
     batch_size: int
     duplicate_ratio: float = 0.0
+    confusion_matrix: Optional[list[list[float]]] = None
 
 
 class CodeSnippet(BaseModel):

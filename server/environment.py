@@ -167,9 +167,10 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
 
         self._current_session_id = session_id
 
-        # Derive deterministic seed
+        # Derive deterministic seed and difficulty
         base_seed = seed if seed is not None else 42
-        scenario = sample_scenario(task_id, base_seed)
+        difficulty_level = kwargs.get("difficulty_level", 3)
+        scenario = sample_scenario(task_id, base_seed, difficulty_level=difficulty_level)
 
         # Set torch seed for reproducibility
         torch.manual_seed(scenario.seed)
@@ -497,6 +498,9 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
 
         if root == "code_bug":
             return "fix_code" in state.actions_taken and state.fix_action_taken
+
+        if root == "scheduler_misconfigured":
+            return "modify_config" in state.actions_taken
 
         return False
 

@@ -47,7 +47,7 @@ logging.root.handlers = [handler]
 logging.root.setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
-# All 6 tasks (Spec S11)
+# All 7 tasks (Spec S11 + Task 7 extension)
 ALL_TASKS = [
     {"id": "task_001", "difficulty": "easy", "max_steps": 20},
     {"id": "task_002", "difficulty": "easy", "max_steps": 20},
@@ -55,6 +55,7 @@ ALL_TASKS = [
     {"id": "task_004", "difficulty": "medium", "max_steps": 25},
     {"id": "task_005", "difficulty": "hard", "max_steps": 30},
     {"id": "task_006", "difficulty": "hard", "max_steps": 30},
+    {"id": "task_007", "difficulty": "medium-hard", "max_steps": 25},
 ]
 
 # create_app takes the class (factory), not an instance
@@ -104,6 +105,44 @@ def get_validation_report() -> dict:
     if report_path.exists():
         return json.loads(report_path.read_text())
     return {"error": "Validation report not yet generated. Run: python validation/run_all_validations.py"}
+
+
+@app.get("/curriculum")
+def get_curriculum() -> dict:
+    """Recommended task order for RL agent training (easy → hard, with difficulty scaling)."""
+    curriculum: list[dict] = []
+    for task in ALL_TASKS:
+        for level in [1, 3, 5]:
+            curriculum.append({
+                "task_id": task["id"],
+                "difficulty": task["difficulty"],
+                "difficulty_level": level,
+                "max_steps": task["max_steps"],
+            })
+    return {"curriculum": curriculum, "total_episodes": len(curriculum)}
+
+
+@app.get("/leaderboard")
+def get_leaderboard() -> dict:
+    """Sorted leaderboard of completed episode scores."""
+    from server._baseline_results import _last_results
+
+    entries = [
+        v for k, v in _last_results.items() if k != "_latest" and isinstance(v, dict)
+    ]
+    sorted_entries = sorted(entries, key=lambda x: x.get("score", 0), reverse=True)
+    return {"entries": sorted_entries, "total": len(sorted_entries)}
+
+
+@app.get("/replay/{episode_id}")
+def get_replay(episode_id: str) -> dict:
+    """Return full action/observation trace for a completed episode."""
+    from server._baseline_results import _last_results
+
+    result = _last_results.get(episode_id)
+    if result is None:
+        return {"error": f"Episode '{episode_id}' not found"}
+    return {"episode_id": episode_id, **result}
 
 
 @app.get("/tasks")
@@ -298,6 +337,29 @@ def _run_heuristic_episode(
             )
         )
         return _get_score(env)
+
+    # Step 5: Check for scheduler issue (loss stagnates)
+    if obs.training_loss_history and len(obs.training_loss_history) >= 10:
+        early_loss = sum(obs.training_loss_history[:3]) / 3
+        mid_loss = sum(obs.training_loss_history[5:8]) / 3
+        finite_late = [v for v in obs.training_loss_history[-3:] if v != float("inf")]
+        late_loss = sum(finite_late) / max(len(finite_late), 1)
+        if early_loss > mid_loss and abs(late_loss - mid_loss) < 0.3:
+            env.step(
+                MLTrainingAction(
+                    action_type="modify_config",
+                    target="learning_rate",
+                    value=0.001,
+                )
+            )
+            env.step(MLTrainingAction(action_type="restart_run"))
+            env.step(
+                MLTrainingAction(
+                    action_type="mark_diagnosed",
+                    diagnosis="scheduler_misconfigured",
+                )
+            )
+            return _get_score(env)
 
     # Fallback
     env.step(
