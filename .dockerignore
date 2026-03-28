@@ -3,7 +3,8 @@ __pycache__/
 .git/
 .pytest_cache/
 tests/
-validation/
+validation/*.py
+validation/requirements.txt
 *.md
 !README.md
 .claude/
@@ -11,3 +12,4 @@ run*.json
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+.env

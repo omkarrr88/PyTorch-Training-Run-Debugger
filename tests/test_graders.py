@@ -5,10 +5,12 @@ from __future__ import annotations
 import pytest
 
 from ml_training_debugger.graders import (
+    _submitted_diagnosis,
     grade_episode,
     grade_task_001,
     grade_task_003,
     grade_task_005,
+    grade_task_007,
 )
 from ml_training_debugger.models import EpisodeState
 from ml_training_debugger.scenarios import sample_scenario
@@ -166,3 +168,60 @@ class TestGradeEpisode:
         state = EpisodeState()
         score = grade_episode("task_999", state, scenario_001)
         assert score == 0.0
+
+
+class TestGradeTask007:
+    def test_perfect_score(self):
+        scenario = sample_scenario("task_007", seed=42)
+        state = EpisodeState(
+            gradients_inspected=True,
+            data_inspected=True,
+            fix_action_taken=True,
+            restart_after_fix=True,
+            diagnosis_submitted=True,
+            actions_taken=[
+                "inspect_gradients",
+                "inspect_data_batch",
+                "modify_config",
+                "restart_run",
+                "mark_diagnosed:scheduler_misconfigured",
+            ],
+        )
+        score = grade_task_007(state, scenario)
+        assert score == 1.0
+
+    def test_wrong_diagnosis(self):
+        scenario = sample_scenario("task_007", seed=42)
+        state = EpisodeState(
+            diagnosis_submitted=True,
+            actions_taken=["mark_diagnosed:overfitting"],
+        )
+        score = grade_task_007(state, scenario)
+        assert score < 0.5
+
+    def test_score_in_range(self):
+        scenario = sample_scenario("task_007", seed=42)
+        state = EpisodeState()
+        score = grade_task_007(state, scenario)
+        assert 0.0 <= score <= 1.0
+
+
+class TestSubmittedDiagnosis:
+    def test_finds_diagnosis(self):
+        state = EpisodeState(
+            actions_taken=["inspect_gradients", "mark_diagnosed:lr_too_high"],
+        )
+        assert _submitted_diagnosis(state) == "lr_too_high"
+
+    def test_no_diagnosis(self):
+        state = EpisodeState(actions_taken=["inspect_gradients"])
+        assert _submitted_diagnosis(state) is None
+
+    def test_latest_diagnosis(self):
+        state = EpisodeState(
+            actions_taken=[
+                "mark_diagnosed:overfitting",
+                "mark_diagnosed:lr_too_high",
+            ],
+        )
+        assert _submitted_diagnosis(state) == "lr_too_high"
