@@ -76,18 +76,24 @@ Dynamic availability: `restart_run` requires a fix first; `fix_code` requires co
 | ID | Difficulty | Root Cause | Description |
 |----|-----------|------------|-------------|
 | `task_001` | Easy | `lr_too_high` | Exploding gradients — all layers show `is_exploding: True`, NaN in error log |
+| `task_002` | Easy | `vanishing_gradients` | Vanishing gradients — deeper layers show `is_vanishing: True`, flat loss curve |
 | `task_003` | Medium | `data_leakage` | Silent data leakage — suspiciously high val accuracy, `class_overlap_score > 0.5` |
+| `task_004` | Medium | `overfitting` | Train-val divergence — loss approaches 0 while val loss climbs |
 | `task_005` | Hard | `batchnorm_eval_mode` | Model in eval mode with compound red herrings (FC gradient spike, GPU 91%, near-vanishing conv1) |
+| `task_006` | Hard | `code_bug` | PyTorch code bug — agent must read and fix actual Python code (4 bug variants) |
 
 ## Baseline Scores
 
-Rule-based heuristic baseline (deterministic, no API key):
+Rule-based heuristic baseline (deterministic, no API key, bit-exact reproducible):
 
-| Task | Score |
-|------|-------|
-| `task_001` | 1.00 |
-| `task_003` | 1.00 |
-| `task_005` | 0.35 |
+| Task | Score | Notes |
+|------|-------|-------|
+| `task_001` | 1.00 | Direct signal: `is_exploding` on all layers |
+| `task_002` | 1.00 | Direct signal: `is_vanishing` on deeper layers |
+| `task_003` | 1.00 | `class_overlap_score > 0.5` triggers correct path |
+| `task_004` | 0.45 | Heuristic must rule out leakage first |
+| `task_005` | 0.35 | Fixed investigation order misses eval mode, diagnoses overfitting |
+| `task_006` | 1.00 | Pattern-matching catches 2 of 4 bug variants |
 
 ## Setup
 
@@ -127,10 +133,11 @@ curl http://localhost:7860/health
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | `{"status": "ready", "tasks": 3}` |
+| `/health` | GET | `{"status": "ready", "tasks": 6}` |
 | `/tasks` | GET | Task list with action schema |
 | `/grader` | POST | Grader score for last completed episode |
-| `/baseline` | POST | Run baseline, return scores |
+| `/baseline` | POST | Run baseline, return scores for all 6 tasks |
+| `/dashboard` | GET | Live diagnostic dashboard (Plotly.js, 4-panel) |
 | `/ws` | WebSocket | Primary agent interface |
 | `/reset` | POST | Reset environment (framework) |
 | `/step` | POST | Execute action (framework) |

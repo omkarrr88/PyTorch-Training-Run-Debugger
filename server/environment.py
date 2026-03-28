@@ -46,6 +46,7 @@ from ml_training_debugger.simulation import (
     gen_val_accuracy_history,
     gen_val_loss_history,
 )
+from server._baseline_results import store_grader_result
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,9 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
                     "task_id": old.scenario.task_id,
                     "steps": old.state.step_count,
                 }
+                store_grader_result(
+                    session_id, score, old.scenario.task_id, old.state.step_count
+                )
 
         self._current_session_id = session_id
 
@@ -335,6 +339,9 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
                 "task_id": scenario.task_id,
                 "steps": state.step_count,
             }
+            store_grader_result(
+                self._current_session_id, score, scenario.task_id, state.step_count
+            )
             logger.info(
                 "episode_completed",
                 extra={

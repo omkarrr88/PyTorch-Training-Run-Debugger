@@ -80,15 +80,24 @@ def create_model_and_inject_fault(
         loss.backward()
 
     elif scenario.root_cause.value == "vanishing_gradients":
-        # Tiny LR → gradients are extremely small
+        # Simulate vanishing gradients: run forward/backward then scale grads
+        # to simulate gradient decay through deep layers
         model.train()
         optimizer = torch.optim.SGD(model.parameters(), lr=scenario.learning_rate)
-        for _ in range(2):
-            optimizer.zero_grad()
-            output = model(batch_x)
-            loss = criterion(output, batch_y)
-            loss.backward()
-            optimizer.step()
+        optimizer.zero_grad()
+        output = model(batch_x)
+        loss = criterion(output, batch_y)
+        loss.backward()
+        # Scale gradients to simulate vanishing: deeper layers get smaller grads
+        depth_mult = scenario.depth_multiplier
+        layer_idx = 0
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                decay = torch.tensor(1e-7) * torch.exp(
+                    torch.tensor(-depth_mult * layer_idx)
+                )
+                param.grad.data = param.grad.data * decay
+                layer_idx += 1
 
     elif scenario.root_cause.value == "data_leakage":
         # Normal model — no gradient anomaly

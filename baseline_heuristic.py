@@ -14,12 +14,17 @@ import argparse
 import json
 import sys
 
-from ml_training_debugger.graders import grade_episode
-from ml_training_debugger.models import EpisodeState, MLTrainingAction, MLTrainingObservation
-from ml_training_debugger.scenarios import sample_scenario
+from ml_training_debugger.models import MLTrainingAction
 from server.environment import MLTrainingEnvironment
 
-MVP_TASKS = ["task_001", "task_003", "task_005"]
+ALL_TASKS = [
+    "task_001",
+    "task_002",
+    "task_003",
+    "task_004",
+    "task_005",
+    "task_006",
+]
 
 
 def run_heuristic_episode(task_id: str, seed: int = 42) -> float:
@@ -175,7 +180,7 @@ def main() -> None:
     args = parser.parse_args()
 
     scores: dict[str, float] = {}
-    for task_id in MVP_TASKS:
+    for task_id in ALL_TASKS:
         score = run_heuristic_episode(task_id)
         scores[task_id] = round(score, 4)
 

@@ -11,8 +11,8 @@ description: |
   An AI agent investigates, diagnoses, fixes, and verifies broken
   training runs using real torch.nn.Module models, torch.autograd
   gradients, state_dict() weight inspection, and PyTorch code-level
-  debugging. 3 tasks across 3 difficulty tiers with context-gated
-  reward shaping.
+  debugging. 6 tasks across 3 difficulty tiers with context-gated
+  reward shaping and a live diagnostic dashboard.
 framework: openenv
 tags:
   - ml-debugging
@@ -20,26 +20,55 @@ tags:
   - reinforcement-learning
   - root-cause-analysis
   - fault-injection
+  - code-debugging
   - openenv
 
 observation_space:
   type: MLTrainingObservation
-  description: "Training run snapshot with progressive reveal — gradients, weights, data stats, model modes revealed on inspection"
+  description: "Training run snapshot with progressive reveal — gradients, weights, data stats, model modes, and code snippets revealed on inspection"
 
 action_space:
   type: MLTrainingAction
-  description: "Investigation, fix, and diagnosis actions with dynamic availability"
+  description: "Investigation, fix, code-fix, and diagnosis actions with dynamic availability"
 
 tasks:
   - id: task_001
     difficulty: easy
     max_steps: 20
+    param_ranges:
+      learning_rate: [0.05, 0.08, 0.10, 0.15, 0.30]
+
+  - id: task_002
+    difficulty: easy
+    max_steps: 20
+    param_ranges:
+      learning_rate: [1e-6, 5e-6, 1e-5]
+      depth_multiplier: [1.0, 1.5, 2.0]
+
   - id: task_003
     difficulty: medium
     max_steps: 25
+    param_ranges:
+      leakage_pct: [0.12, 0.18, 0.22, 0.28]
+
+  - id: task_004
+    difficulty: medium
+    max_steps: 25
+    param_ranges:
+      weight_decay: [0.0, 0.0001, 0.001]
+      divergence_epoch: [5, 8, 12]
+
   - id: task_005
     difficulty: hard
     max_steps: 30
+    param_ranges:
+      red_herring_intensity: [0.8, 2.5]
+
+  - id: task_006
+    difficulty: hard
+    max_steps: 30
+    param_ranges:
+      bug_type: [eval_mode, detach_loss, zero_grad_missing, inplace_relu]
 
 reward:
   range: [-1.0, 1.0]
@@ -56,3 +85,4 @@ endpoints:
   grader: "POST /grader"
   baseline: "POST /baseline"
   health: "GET /health"
+  dashboard: "GET /dashboard"
