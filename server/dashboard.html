@@ -94,7 +94,14 @@ function connect() {
   ws.onerror = () => ws.close();
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
-    if (msg.data) handleObservation(msg.data);
+    if (msg.type === 'observation' && msg.data) {
+      // Framework wraps: {type: "observation", data: {observation: {...}, reward, done}}
+      const wrapper = msg.data;
+      const obsData = wrapper.observation || wrapper;
+      obsData.reward = wrapper.reward;
+      obsData.done = wrapper.done;
+      handleObservation(obsData);
+    }
   };
 }
 

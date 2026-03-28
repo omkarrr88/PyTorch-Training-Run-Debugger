@@ -86,3 +86,4 @@ endpoints:
   baseline: "POST /baseline"
   health: "GET /health"
   dashboard: "GET /dashboard"
+  validation_report: "GET /validation-report"

@@ -90,6 +90,22 @@ def get_dashboard() -> str:
     return html_path.read_text()
 
 
+@app.get("/validation-report")
+def get_validation_report() -> dict:
+    """Serve pre-computed simulation fidelity report. Spec Section 18."""
+    import pathlib
+
+    report_path = (
+        pathlib.Path(__file__).parent.parent
+        / "validation"
+        / "reports"
+        / "fidelity_report.json"
+    )
+    if report_path.exists():
+        return json.loads(report_path.read_text())
+    return {"error": "Validation report not yet generated. Run: python validation/run_all_validations.py"}
+
+
 @app.get("/tasks")
 def get_tasks() -> list[dict]:
     """Return task list with IDs, difficulties, and action schema."""
@@ -205,12 +221,16 @@ def _run_heuristic_episode(
         )
         return _get_score(env)
 
-    # Check overfitting (val_loss diverging)
+    # Check overfitting (val_loss diverging OR train loss near-zero with rising val_loss)
     if obs.val_loss_history and len(obs.val_loss_history) >= 10:
         early = sum(obs.val_loss_history[:5]) / 5
         late = sum(obs.val_loss_history[-5:]) / 5
+        train_loss_low = (
+            obs.training_loss_history and obs.training_loss_history[-1] < 0.1
+        )
+        val_loss_rising = late > early * 1.05
         if (
-            late > early * 1.2
+            (val_loss_rising or train_loss_low)
             and obs.data_batch_stats
             and obs.data_batch_stats.class_overlap_score < 0.1
         ):

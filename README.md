@@ -91,8 +91,8 @@ Rule-based heuristic baseline (deterministic, no API key, bit-exact reproducible
 | `task_001` | 1.00 | Direct signal: `is_exploding` on all layers |
 | `task_002` | 1.00 | Direct signal: `is_vanishing` on deeper layers |
 | `task_003` | 1.00 | `class_overlap_score > 0.5` triggers correct path |
-| `task_004` | 0.45 | Heuristic must rule out leakage first |
-| `task_005` | 0.35 | Fixed investigation order misses eval mode, diagnoses overfitting |
+| `task_004` | 1.00 | Detects train-val divergence + near-zero train loss |
+| `task_005` | 0.35 | Fixed investigation order misses eval mode — hard task genuinely challenges agents |
 | `task_006` | 1.00 | Pattern-matching catches 2 of 4 bug variants |
 
 ## Setup
@@ -145,6 +145,47 @@ curl http://localhost:7860/health
 | `/schema` | GET | Action/observation schemas (framework) |
 | `/docs` | GET | Swagger UI (framework) |
 
+### WebSocket Message Format
+
+The primary agent interface is the WebSocket endpoint at `/ws`. Messages use JSON:
+
+**Reset** (start a new episode, optionally select task):
+```json
+{"type": "reset"}
+{"type": "reset", "data": {"task_id": "task_003", "seed": 42}}
+```
+Without `data`, defaults to `task_001`. With `data`, selects the specified task.
+
+Returns: `{"type": "observation", "data": {"observation": {...}, "reward": 0.0, "done": false}}`
+
+**Step** (execute an action):
+```json
+{"type": "step", "data": {"action_type": "inspect_gradients"}}
+```
+```json
+{"type": "step", "data": {"action_type": "modify_config", "target": "learning_rate", "value": 0.001}}
+```
+```json
+{"type": "step", "data": {"action_type": "mark_diagnosed", "diagnosis": "lr_too_high"}}
+```
+Returns: `{"type": "observation", "data": {"observation": {...}, "reward": float, "done": bool}}`
+
+### HTTP vs WebSocket
+
+**WebSocket `/ws`** is the primary agent interface — it maintains a persistent session across reset/step/diagnose. Use this for full episodes.
+
+**HTTP `POST /reset` and `POST /step`** are stateless per the OpenEnv framework design — each request creates a fresh environment instance. Use these for single-action queries or health checks, not full episodes.
+
+**Custom endpoints** (`POST /baseline`, `POST /grader`, `GET /tasks`, `GET /health`) work independently of sessions.
+
+## Validation Suite
+
+A PyTorch validation suite proves simulation fidelity by comparing parametric curve generation against real training runs. Pre-computed fidelity reports are served at `GET /validation-report`.
+
+**Methodology:** Real `torch.nn.Module` models are trained with each fault type, and the resulting loss/accuracy curves are compared against the parametric generators. All fault injection uses real `torch.autograd` gradients and `model.state_dict()` weights — not synthetic formulas.
+
+**Coverage:** Exploding gradients, vanishing gradients, data leakage, overfitting, BatchNorm eval mode, and all 4 code bug variants.
+
 ## Architecture
 
 - **Python 3.12** · PyTorch CPU-only · openenv-core
@@ -154,3 +195,7 @@ curl http://localhost:7860/health
 - `import torch` in every core module — zero numpy in core
 - Session isolation via per-session `EpisodeState`
 - Deterministic reproducibility via `torch.manual_seed()`
+
+### Docker Image Size
+
+The Docker image is ~1.5GB. This is driven by `libtorch_cpu.so` (426MB) — the core PyTorch CPU binary required for real `torch.nn.Module`, `torch.autograd`, and `model.state_dict()` support. This is the intentional trade-off: real PyTorch gradient computation and weight inspection (not synthetic data) requires the full CPU runtime. Non-essential torch components (test suites, benchmark tools, CUDA stubs, type stubs) are stripped in the Dockerfile.
