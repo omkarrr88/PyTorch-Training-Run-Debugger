@@ -74,6 +74,116 @@ def _create_model(model_type: str) -> nn.Module:
     return SimpleCNN()
 
 
+# Cache for real training curves — keyed by (task_id, seed, model_type)
+_TRAINING_CACHE: dict[tuple[str, int, str], dict[str, list[float]]] = {}
+
+TRAINING_EPOCHS = 20
+TRAINING_BATCH_SIZE = 16
+
+
+def run_real_training(scenario: ScenarioParams) -> dict[str, list[float]]:
+    """Run real 20-epoch mini-training and return loss/accuracy curves.
+
+    Caches results per (task_id, seed, model_type) for instant subsequent resets.
+    Each call takes ~0.5-2s on CPU; cached calls are instant.
+    """
+    cache_key = (scenario.task_id, scenario.seed, scenario.model_type)
+    if cache_key in _TRAINING_CACHE:
+        return _TRAINING_CACHE[cache_key]
+
+    torch.manual_seed(scenario.seed)
+    model = _create_model(scenario.model_type)
+    criterion = nn.CrossEntropyLoss()
+    root = scenario.root_cause.value
+
+    # Configure optimizer based on fault type
+    if root == "lr_too_high":
+        lr = scenario.learning_rate
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+        model.train()
+    elif root == "vanishing_gradients":
+        optimizer = torch.optim.SGD(model.parameters(), lr=scenario.learning_rate)
+        model.train()
+    elif root == "batchnorm_eval_mode":
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        model.eval()  # The bug
+    elif root == "scheduler_misconfigured":
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=scenario.scheduler_step_size,
+            gamma=scenario.scheduler_gamma,
+        )
+        model.train()
+    elif root == "overfitting":
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=0.001, weight_decay=scenario.weight_decay
+        )
+        model.train()
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        model.train()
+
+    loss_history: list[float] = []
+    val_loss_history: list[float] = []
+    val_acc_history: list[float] = []
+
+    # Generate fixed training and validation data
+    torch.manual_seed(scenario.seed + 100)
+    train_x = torch.randn(TRAINING_BATCH_SIZE * 4, 3, 32, 32)
+    train_y = torch.randint(0, 10, (TRAINING_BATCH_SIZE * 4,))
+    val_x = torch.randn(TRAINING_BATCH_SIZE, 3, 32, 32)
+    val_y = torch.randint(0, 10, (TRAINING_BATCH_SIZE,))
+
+    # For data leakage: copy some training samples into validation
+    if root == "data_leakage":
+        leak_count = max(1, int(TRAINING_BATCH_SIZE * scenario.leakage_pct))
+        val_x[:leak_count] = train_x[:leak_count]
+        val_y[:leak_count] = train_y[:leak_count]
+
+    for epoch in range(TRAINING_EPOCHS):
+        # Training step
+        batch_idx = (epoch % 4) * TRAINING_BATCH_SIZE
+        bx = train_x[batch_idx : batch_idx + TRAINING_BATCH_SIZE]
+        by = train_y[batch_idx : batch_idx + TRAINING_BATCH_SIZE]
+
+        optimizer.zero_grad()
+        output = model(bx)
+        loss = criterion(output, by)
+
+        loss_val = loss.item()
+        if loss_val != loss_val:  # NaN check
+            loss_history.append(float("inf"))
+        else:
+            loss_history.append(loss_val)
+
+        try:
+            loss.backward()
+            optimizer.step()
+            if root == "scheduler_misconfigured":
+                scheduler.step()
+        except RuntimeError:
+            loss_history[-1] = float("inf")
+
+        # Validation step (no grad)
+        with torch.no_grad():
+            val_out = model(val_x)
+            v_loss = criterion(val_out, val_y)
+            v_loss_val = v_loss.item()
+            val_loss_history.append(v_loss_val if v_loss_val == v_loss_val else float("inf"))
+            preds = val_out.argmax(dim=1)
+            acc = (preds == val_y).float().mean().item()
+            val_acc_history.append(acc)
+
+    result = {
+        "loss_history": loss_history,
+        "val_loss_history": val_loss_history,
+        "val_acc_history": val_acc_history,
+    }
+    _TRAINING_CACHE[cache_key] = result
+    return result
+
+
 def create_model_and_inject_fault(
     scenario: ScenarioParams,
 ) -> tuple[nn.Module, dict]:

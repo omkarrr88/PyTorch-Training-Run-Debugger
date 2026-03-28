@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""LLM baseline agent using OpenAI GPT-4o.
+"""LLM baseline agent using Google Gemini (via OpenAI-compatible SDK).
 
-Optional — requires OPENAI_API_KEY environment variable.
-Uses temperature=0.0 and seed=42 for near-deterministic behavior.
+Requires GEMINI_API_KEY environment variable (or pass via --api-key).
+Uses temperature=0.0 for near-deterministic behavior.
 Spec reference: Section 17.
 
 Usage:
-    OPENAI_API_KEY=... python baseline_inference.py [--url http://localhost:7860]
+    GEMINI_API_KEY=... python baseline_inference.py
+    python baseline_inference.py --api-key YOUR_KEY
 """
 
 from __future__ import annotations
@@ -15,6 +16,16 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
+
+# Load .env file if present
+_env_path = Path(__file__).parent / ".env"
+if _env_path.exists():
+    for line in _env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
 
 try:
     from openai import OpenAI
@@ -32,14 +43,15 @@ ALL_TASKS = [
     "task_004",
     "task_005",
     "task_006",
+    "task_007",
 ]
 
 SYSTEM_PROMPT = """You are an expert ML engineer debugging a PyTorch training run.
 You are interacting with an environment that simulates a broken training job.
 
-Available actions (respond with JSON):
+Available actions (respond with JSON only, no explanation):
 - {"action_type": "inspect_gradients"} - View gradient statistics per layer
-- {"action_type": "inspect_data_batch"} - View data batch statistics
+- {"action_type": "inspect_data_batch"} - View data batch statistics and confusion matrix
 - {"action_type": "inspect_model_modes"} - View model layer modes (train/eval)
 - {"action_type": "inspect_model_weights"} - View model weight statistics
 - {"action_type": "inspect_code"} - View PyTorch training code
@@ -51,92 +63,143 @@ Available actions (respond with JSON):
 - {"action_type": "restart_run"} - Restart training (requires a fix first)
 - {"action_type": "mark_diagnosed", "diagnosis": "<cause>"} - Submit diagnosis
 
-Valid diagnoses: lr_too_high, vanishing_gradients, data_leakage, overfitting, batchnorm_eval_mode, code_bug
+Valid diagnoses: lr_too_high, vanishing_gradients, data_leakage, overfitting, batchnorm_eval_mode, code_bug, scheduler_misconfigured
 
 Strategy:
-1. First investigate by inspecting gradients, data, and model modes
-2. Form a hypothesis based on the evidence
-3. Apply the correct fix
-4. Restart training to verify
+1. First investigate by inspecting gradients, data, model modes, and code
+2. Form a hypothesis based on the evidence gathered
+3. Apply the correct fix for the identified root cause
+4. Restart training to verify the fix works
 5. Submit your diagnosis
 
-Respond with ONLY a valid JSON action object, no explanation."""
+IMPORTANT: Respond with ONLY a valid JSON action object. No explanation, no markdown, no code blocks."""
 
 
-def run_llm_episode(task_id: str, client: OpenAI) -> float:
+def run_llm_episode(task_id: str, client: OpenAI, model_name: str) -> float:
     """Run one LLM agent episode."""
     env = MLTrainingEnvironment()
     obs = env.reset(seed=42, episode_id=f"llm_{task_id}", task_id=task_id)
 
+    initial_obs = {
+        "training_loss_history": obs.training_loss_history[:5],
+        "val_accuracy_history": obs.val_accuracy_history[:5],
+        "current_config": obs.current_config.model_dump(),
+        "error_log": obs.error_log,
+        "available_actions": obs.available_actions,
+        "notes": obs.notes,
+        "gpu_memory_used_gb": obs.gpu_memory_used_gb,
+    }
+
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"New episode started. Observation:\n{json.dumps(obs.model_dump(), indent=2, default=str)[:3000]}"},
+        {
+            "role": "user",
+            "content": f"New episode started for a broken PyTorch training run.\n\nInitial observation:\n{json.dumps(initial_obs, indent=2, default=str)}",
+        },
     ]
 
-    for step in range(20):
+    for step in range(25):
         if obs.done:
             break
 
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            temperature=0.0,
-            seed=42,
-            max_tokens=200,
-        )
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=0.0,
+                max_tokens=300,
+            )
+            action_text = response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"    Step {step}: API error — {e}", file=sys.stderr)
+            break
 
-        action_text = response.choices[0].message.content.strip()
+        # Clean up common LLM formatting issues
+        action_text = action_text.strip("`").strip()
+        if action_text.startswith("json"):
+            action_text = action_text[4:].strip()
+
         messages.append({"role": "assistant", "content": action_text})
 
         try:
             action_data = json.loads(action_text)
             action = MLTrainingAction(**action_data)
         except (json.JSONDecodeError, Exception) as e:
-            messages.append({"role": "user", "content": f"Invalid action: {e}. Try again with valid JSON."})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Invalid action format: {e}. Respond with ONLY valid JSON.",
+                }
+            )
             continue
 
         obs = env.step(action)
-        obs_summary = {
+
+        obs_summary: dict = {
             "reward": obs.reward,
             "done": obs.done,
             "step": obs.episode_state.step_count,
             "available_actions": obs.available_actions,
-            "error_log": obs.error_log,
         }
+        if obs.error_log:
+            obs_summary["error_log"] = obs.error_log
         if obs.gradient_stats:
             obs_summary["gradient_stats"] = [
-                {"layer": g.layer_name, "mean_norm": round(g.mean_norm, 4), "exploding": g.is_exploding, "vanishing": g.is_vanishing}
+                {
+                    "layer": g.layer_name,
+                    "mean_norm": round(g.mean_norm, 4),
+                    "exploding": g.is_exploding,
+                    "vanishing": g.is_vanishing,
+                }
                 for g in obs.gradient_stats
             ]
         if obs.data_batch_stats:
             obs_summary["data_overlap"] = obs.data_batch_stats.class_overlap_score
+            obs_summary["duplicate_ratio"] = obs.data_batch_stats.duplicate_ratio
         if obs.model_mode_info:
             obs_summary["model_modes"] = obs.model_mode_info
         if obs.code_snippet:
-            obs_summary["code"] = obs.code_snippet.code[:500]
+            obs_summary["code"] = obs.code_snippet.code[:600]
+            obs_summary["hint"] = obs.code_snippet.hint
 
-        messages.append({"role": "user", "content": f"Observation:\n{json.dumps(obs_summary, indent=2, default=str)}"})
+        messages.append(
+            {
+                "role": "user",
+                "content": f"Observation after your action:\n{json.dumps(obs_summary, indent=2, default=str)}",
+            }
+        )
 
     session = env._get_session()
     return session.last_score if session and session.last_score is not None else 0.0
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="LLM baseline agent (GPT-4o)")
+    parser = argparse.ArgumentParser(description="LLM baseline agent (Gemini)")
     parser.add_argument("--url", default="http://localhost:7860")
+    parser.add_argument("--api-key", default=None, help="Gemini API key")
+    parser.add_argument(
+        "--model",
+        default="gemini-2.0-flash",
+        help="Model name (default: gemini-2.0-flash)",
+    )
     args = parser.parse_args()
 
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = args.api_key or os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("Error: OPENAI_API_KEY environment variable not set")
+        print("Error: Set GEMINI_API_KEY env var or pass --api-key")
         sys.exit(1)
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    )
+
     scores: dict[str, float] = {}
+    print(f"Running LLM baseline with {args.model}...", file=sys.stderr)
 
     for task_id in ALL_TASKS:
         try:
-            score = run_llm_episode(task_id, client)
+            score = run_llm_episode(task_id, client, args.model)
             scores[task_id] = round(score, 4)
             print(f"  {task_id}: {score:.4f}", file=sys.stderr)
         except Exception as e:

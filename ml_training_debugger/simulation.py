@@ -1,6 +1,7 @@
-"""Parametric curve generation using torch.Tensor operations.
+"""Training curve generation — real PyTorch mini-training with parametric fallback.
 
-All loss/accuracy histories are generated via parametric equations.
+Primary: run_real_training() from pytorch_engine (20 real epochs, cached per task/seed).
+Fallback: parametric torch.Tensor formulas for edge cases.
 Zero numpy. Spec reference: Section 6.
 """
 
@@ -13,8 +14,26 @@ from ml_training_debugger.scenarios import ScenarioParams
 EPOCHS = 20
 
 
+def _get_real_curves(scenario: ScenarioParams) -> dict[str, list[float]] | None:
+    """Try to get real training curves. Returns None on failure."""
+    try:
+        from ml_training_debugger.pytorch_engine import run_real_training
+
+        return run_real_training(scenario)
+    except Exception:
+        return None
+
+
 def gen_loss_history(scenario: ScenarioParams) -> list[float]:
-    """Generate training loss history (20 epochs) using torch ops."""
+    """Generate training loss history (20 epochs).
+
+    Uses real mini-training (cached). Falls back to parametric on failure.
+    """
+    real = _get_real_curves(scenario)
+    if real is not None:
+        return real["loss_history"]
+
+    # Parametric fallback
     torch.manual_seed(scenario.seed)
     t = torch.arange(EPOCHS, dtype=torch.float32)
 
@@ -80,7 +99,15 @@ def gen_loss_history(scenario: ScenarioParams) -> list[float]:
 
 
 def gen_val_accuracy_history(scenario: ScenarioParams) -> list[float]:
-    """Generate validation accuracy history (20 epochs) using torch ops."""
+    """Generate validation accuracy history (20 epochs).
+
+    Uses real mini-training (cached). Falls back to parametric on failure.
+    """
+    real = _get_real_curves(scenario)
+    if real is not None:
+        return real["val_acc_history"]
+
+    # Parametric fallback
     torch.manual_seed(scenario.seed + 1)
     t = torch.arange(EPOCHS, dtype=torch.float32)
 
@@ -155,7 +182,15 @@ def gen_val_accuracy_history(scenario: ScenarioParams) -> list[float]:
 
 
 def gen_val_loss_history(scenario: ScenarioParams) -> list[float]:
-    """Generate validation loss history (20 epochs) using torch ops."""
+    """Generate validation loss history (20 epochs).
+
+    Uses real mini-training (cached). Falls back to parametric on failure.
+    """
+    real = _get_real_curves(scenario)
+    if real is not None:
+        return real["val_loss_history"]
+
+    # Parametric fallback
     torch.manual_seed(scenario.seed + 2)
     t = torch.arange(EPOCHS, dtype=torch.float32)
 
