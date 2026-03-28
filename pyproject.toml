@@ -1,0 +1,41 @@
+[project]
+name = "pytorch-training-debugger"
+version = "1.0.0"
+description = "OpenEnv RL environment for PyTorch training failure debugging"
+requires-python = ">=3.12"
+dependencies = [
+    "torch",
+    "openenv-core",
+    "pydantic>=2.0",
+    "fastapi",
+    "uvicorn",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-asyncio",
+    "black",
+    "ruff",
+    "isort",
+    "httpx",
+    "websockets",
+]
+llm = [
+    "openai",
+]
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

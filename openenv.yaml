@@ -1,0 +1,58 @@
+spec_version: 1
+name: pytorch-training-debugger
+type: space
+runtime: fastapi
+app: server.app:app
+port: 7860
+
+version: "1.0.0"
+description: |
+  PyTorch-native fault injection engine for training failure debugging.
+  An AI agent investigates, diagnoses, fixes, and verifies broken
+  training runs using real torch.nn.Module models, torch.autograd
+  gradients, state_dict() weight inspection, and PyTorch code-level
+  debugging. 3 tasks across 3 difficulty tiers with context-gated
+  reward shaping.
+framework: openenv
+tags:
+  - ml-debugging
+  - pytorch
+  - reinforcement-learning
+  - root-cause-analysis
+  - fault-injection
+  - openenv
+
+observation_space:
+  type: MLTrainingObservation
+  description: "Training run snapshot with progressive reveal — gradients, weights, data stats, model modes revealed on inspection"
+
+action_space:
+  type: MLTrainingAction
+  description: "Investigation, fix, and diagnosis actions with dynamic availability"
+
+tasks:
+  - id: task_001
+    difficulty: easy
+    max_steps: 20
+  - id: task_003
+    difficulty: medium
+    max_steps: 25
+  - id: task_005
+    difficulty: hard
+    max_steps: 30
+
+reward:
+  range: [-1.0, 1.0]
+  shaped: true
+  step_penalty: -0.01
+  investigation_bonus: 0.05
+  max_investigation_bonus: 0.25
+  correct_diagnosis: 0.50
+  terminal_convergence: 0.40
+
+endpoints:
+  websocket: "/ws"
+  tasks: "GET /tasks"
+  grader: "POST /grader"
+  baseline: "POST /baseline"
+  health: "GET /health"
