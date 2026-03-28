@@ -173,33 +173,61 @@ def run_llm_episode(task_id: str, client: OpenAI, model_name: str) -> float:
     return session.last_score if session and session.last_score is not None else 0.0
 
 
+PROVIDERS = {
+    "groq": {
+        "env_key": "GROQ_API_KEY",
+        "base_url": "https://api.groq.com/openai/v1",
+        "default_model": "llama-3.3-70b-versatile",
+    },
+    "cerebras": {
+        "env_key": "CEREBRAS_API_KEY",
+        "base_url": "https://api.cerebras.ai/v1",
+        "default_model": "llama3.1-8b",
+    },
+    "gemini": {
+        "env_key": "GEMINI_API_KEY",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "default_model": "gemini-2.0-flash",
+    },
+    "openai": {
+        "env_key": "OPENAI_API_KEY",
+        "base_url": None,
+        "default_model": "gpt-4o",
+    },
+}
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="LLM baseline agent (Gemini)")
+    parser = argparse.ArgumentParser(description="LLM baseline agent")
     parser.add_argument("--url", default="http://localhost:7860")
-    parser.add_argument("--api-key", default=None, help="Gemini API key")
+    parser.add_argument("--api-key", default=None, help="API key")
     parser.add_argument(
-        "--model",
-        default="gemini-2.0-flash",
-        help="Model name (default: gemini-2.0-flash)",
+        "--provider",
+        default="groq",
+        choices=list(PROVIDERS.keys()),
+        help="LLM provider (default: groq)",
     )
+    parser.add_argument("--model", default=None, help="Model name (auto-detected from provider)")
     args = parser.parse_args()
 
-    api_key = args.api_key or os.environ.get("GEMINI_API_KEY")
+    prov = PROVIDERS[args.provider]
+    api_key = args.api_key or os.environ.get(prov["env_key"])
     if not api_key:
-        print("Error: Set GEMINI_API_KEY env var or pass --api-key")
+        print(f"Error: Set {prov['env_key']} env var or pass --api-key")
         sys.exit(1)
 
-    client = OpenAI(
-        api_key=api_key,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-    )
+    model_name = args.model or prov["default_model"]
+    client_kwargs: dict = {"api_key": api_key}
+    if prov["base_url"]:
+        client_kwargs["base_url"] = prov["base_url"]
+    client = OpenAI(**client_kwargs)
 
     scores: dict[str, float] = {}
-    print(f"Running LLM baseline with {args.model}...", file=sys.stderr)
+    print(f"Running LLM baseline with {args.provider}/{model_name}...", file=sys.stderr)
 
     for task_id in ALL_TASKS:
         try:
-            score = run_llm_episode(task_id, client, args.model)
+            score = run_llm_episode(task_id, client, model_name)
             scores[task_id] = round(score, 4)
             print(f"  {task_id}: {score:.4f}", file=sys.stderr)
         except Exception as e:
