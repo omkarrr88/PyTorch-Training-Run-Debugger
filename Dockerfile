@@ -97,6 +97,8 @@ COPY server/ server/
 COPY openenv.yaml .
 COPY baseline_heuristic.py .
 COPY baseline_inference.py .
+COPY inference.py .
+COPY demo.py .
 COPY README.md .
 COPY validation/reports/ validation/reports/
 
