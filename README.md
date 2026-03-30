@@ -15,9 +15,11 @@ This environment recreates the experience of an ML engineer facing a broken PyTo
 
 ### Key Differentiators
 
-- **PyTorch-native internals** — Real `torch.nn.Module` models (~50K params), real `torch.autograd` gradients, real `state_dict()` weight snapshots
+- **Real PyTorch mini-training** — 20 real forward+backward epochs per reset, cached for instant replay. Loss/accuracy curves come from real training, not parametric formulas.
+- **Dual model architectures** — SimpleCNN (~50K params) and SimpleMLP (~20K params) randomly selected per episode
 - **Context-gated reward shaping** — Penalty fires only when agent ignores evidence it already gathered; no penalty for reasonable priors
-- **Progressive information reveal** — Gradient stats, weight stats, data batch stats only populated after corresponding inspection actions
+- **Progressive information reveal** — Gradient stats, weight stats, data batch stats, confusion matrices only populated after corresponding inspection actions
+- **7 tasks with difficulty scaling** — Easy to hard, with configurable difficulty level (1-5) per task
 
 ## Environment Design
 
@@ -81,6 +83,9 @@ Dynamic availability: `restart_run` requires a fix first; `fix_code` requires co
 | `task_004` | Medium | `overfitting` | Train-val divergence — loss approaches 0 while val loss climbs |
 | `task_005` | Hard | `batchnorm_eval_mode` | Model in eval mode with compound red herrings (FC gradient spike, GPU 91%, near-vanishing conv1) |
 | `task_006` | Hard | `code_bug` | PyTorch code bug — agent must read and fix actual Python code (4 bug variants) |
+| `task_007` | Med-Hard | `scheduler_misconfigured` | LR scheduler with wrong gamma/step_size — training stagnates after initial progress |
+
+All tasks support `difficulty_level` (1-5) via reset: `{"type": "reset", "data": {"task_id": "task_005", "difficulty_level": 4}}`
 
 ## Baseline Scores
 
@@ -206,22 +211,31 @@ Returns: `{"type": "observation", "data": {"observation": {...}, "reward": float
 
 ## Validation Suite
 
-A PyTorch validation suite proves simulation fidelity by comparing parametric curve generation against real training runs. Pre-computed fidelity reports are served at `GET /validation-report`.
+8/8 validation checks pass — served live at `GET /validation-report`:
 
-**Methodology:** Real `torch.nn.Module` models are trained with each fault type, and the resulting loss/accuracy curves are compared against the parametric generators. All fault injection uses real `torch.autograd` gradients and `model.state_dict()` weights — not synthetic formulas.
+**Methodology:** Real PyTorch 20-epoch mini-training with fault injection. Each fault type is validated with behavioral checks (gradient detection, loss patterns, model mode, code fix acceptance). Both SimpleCNN and SimpleMLP architectures verified.
 
-**Coverage:** Exploding gradients, vanishing gradients, data leakage, overfitting, BatchNorm eval mode, and all 4 code bug variants.
+**Coverage:** Exploding gradients, vanishing gradients, data leakage, overfitting, BatchNorm eval mode, code bugs (4 variants), scheduler misconfigured, dual architecture.
 
 ## Architecture
 
-- **Python 3.12** · PyTorch CPU-only · openenv-core
-- Real `torch.nn.Module` models with real `torch.autograd` gradients
-- Parametric curve generation for loss/accuracy histories (sub-ms latency)
+- **Python 3.12** · PyTorch 2.5.1 CPU-only · openenv-core v0.2.2
+- **Dual model architectures**: SimpleCNN (~50K params) + SimpleMLP (~20K params)
+- **Real 20-epoch mini-training** per reset (cached per task/seed for instant replay)
 - Typed Pydantic models everywhere — no `Dict[str, Any]`
 - `import torch` in every core module — zero numpy in core
 - Session isolation via per-session `EpisodeState`
 - Deterministic reproducibility via `torch.manual_seed()`
+- **251 tests, 95% coverage**
 
 ### Docker Image Size
 
-The Docker image is ~1.5GB. This is driven by `libtorch_cpu.so` (426MB) — the core PyTorch CPU binary required for real `torch.nn.Module`, `torch.autograd`, and `model.state_dict()` support. This is the intentional trade-off: real PyTorch gradient computation and weight inspection (not synthetic data) requires the full CPU runtime. Non-essential torch components (test suites, benchmark tools, CUDA stubs, type stubs) are stripped in the Dockerfile.
+The Docker image is **885MB** (optimized from 1.96GB via multi-stage build, torch 2.5.1, `strip --strip-unneeded`, and removal of unused transitive dependencies). The core `libtorch_cpu.so` (329MB stripped) is the irreducible minimum for real `torch.nn.Module`, `torch.autograd`, and `model.state_dict()` support — the intentional trade-off for authentic PyTorch computation vs synthetic data.
+
+### Research Paper
+
+See [PAPER.md](PAPER.md) — "Context-Gated Reward Shaping for Evidence-Based ML Debugging"
+
+### Project Explanation
+
+See [EXPLANATION.md](EXPLANATION.md) — full project explanation in simple language

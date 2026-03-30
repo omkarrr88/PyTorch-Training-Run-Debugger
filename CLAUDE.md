@@ -29,7 +29,7 @@ Every computation in core modules uses `torch.Tensor`, not `numpy.ndarray`. `imp
 These are separate modules with separate purposes. The **reward function** (`reward_engine.py`) returns a float per step for RL training signal. The **grader** (`graders.py`) returns a normalized 0.0-1.0 score at episode end for the `/grader` endpoint and auto-validation. The grader evaluates `EpisodeState` holistically — it is **not** a sum of step rewards. Never conflate them.
 
 ### Opaque Task IDs
-Task IDs are `task_001` through `task_006`. The agent must never be able to infer the diagnosis from the task ID. Do not use descriptive names anywhere the agent can observe them.
+Task IDs are `task_001` through `task_007`. The agent must never be able to infer the diagnosis from the task ID. Do not use descriptive names anywhere the agent can observe them.
 
 ---
 
@@ -102,7 +102,7 @@ Test with intentionally messy fixes: `"  loss = criterion(output, batch_y)  # fi
 The `gradients_were_normal` flag is set **inside** the `inspect_gradients` handler, based on whether `is_exploding` is False on **all** layers. The threshold for `is_exploding` is `mean_norm > 10.0`. The threshold for `is_vanishing` is `mean_norm < 1e-6`. In Task 5, the FC spike has `is_exploding: False` (it spiked but the mean norm stays below 10.0), so `gradients_were_normal` is set to True. This is the gate that makes the penalty fire when the agent then calls `add_callback`.
 
 ### Docker Image Size
-Target: <500MB. PyTorch CPU-only wheel is ~150MB. Use `python:3.12-slim` base. Install torch with `--index-url https://download.pytorch.org/whl/cpu`. Do NOT install CUDA. Pre-compute validation reports locally — do not run real training in Docker build.
+Current: 885MB. Uses torch 2.5.1+cpu with multi-stage build and `strip --strip-unneeded`. The irreducible minimum is `libtorch_cpu.so` (329MB stripped). Use `python:3.12-slim` base. Do NOT install CUDA.
 
 ### Baseline Reproducibility
 The rule-based baseline must produce **bit-exact identical** scores on two consecutive runs. This requires:
@@ -112,7 +112,7 @@ The rule-based baseline must produce **bit-exact identical** scores on two conse
 
 ### Auto-Validator Endpoints
 These endpoints are checked programmatically. They must respond correctly or you are disqualified:
-- `GET /health` -> `{"status": "ready", "tasks": N}` (200) — N is the number of active tasks (3 for MVP, 6 for full)
+- `GET /health` -> `{"status": "ready", "tasks": N}` (200) — N is the number of active tasks (7 for full)
 - `GET /tasks` -> list of tasks with IDs and action schema (200)
 - `POST /grader` -> `{"score": float}` after a completed episode (200)
 - `POST /baseline` -> scores for all tasks (200)

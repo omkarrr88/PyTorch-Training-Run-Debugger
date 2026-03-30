@@ -333,8 +333,8 @@ Then they fix the right part and test-drive it to confirm.
 |----------|--------|
 | **What?** | A practice environment where AI agents learn to debug broken PyTorch training runs |
 | **Why?** | Real ML debugging costs companies millions. Training AI to do it has huge value. |
-| **How?** | 6 mystery cases with real PyTorch models, progressive clue reveal, and smart scoring |
-| **What's special?** | Real PyTorch internals, context-gated rewards, code-level debugging, red herrings |
+| **How?** | 7 mystery cases with real PyTorch training (CNN + MLP), progressive clue reveal, and smart scoring |
+| **What's special?** | Real 20-epoch training, dual architectures, context-gated rewards, code-level debugging, red herrings, difficulty scaling |
 | **Who's it for?** | AI researchers building smarter debugging agents |
 | **Built with?** | Python, PyTorch, FastAPI, OpenEnv, Pydantic, Docker |
 | **For what event?** | Meta PyTorch OpenEnv Hackathon x Scaler School of Technology |

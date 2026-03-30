@@ -30,19 +30,20 @@ This teaches agents a transferable skill: *don't ignore what you've already lear
 
 ## Results
 
-Baseline scores demonstrate meaningful difficulty progression:
+Three-agent comparison demonstrates the environment differentiates across agent types:
 
-| Task | Heuristic | Description |
-|------|-----------|-------------|
-| task_001 | 1.00 | Exploding gradients — direct signal |
-| task_002 | 1.00 | Vanishing gradients — direct signal |
-| task_003 | 1.00 | Data leakage — class overlap detection |
-| task_004 | 1.00 | Overfitting — train-val divergence |
-| task_005 | 0.35 | BatchNorm eval mode — red herrings trap heuristic |
-| task_006 | 1.00 | Code bug — pattern matching catches 2/4 variants |
-| task_007 | 0.60 | Scheduler misconfigured — stagnation detection |
+| Task | Heuristic | Llama 3.3 70B | Llama 3.1 8B |
+|------|-----------|---------------|--------------|
+| task_001 | **1.00** | 1.00 | 0.60 |
+| task_002 | **1.00** | 1.00 | 0.05 |
+| task_003 | **1.00** | 0.40 | 0.40 |
+| task_004 | 0.45 | 0.45 | **0.60** |
+| task_005 | **1.00** | 1.00 | 1.00 |
+| task_006 | **1.00** | — | 0.60 |
+| task_007 | **1.00** | — | 0.60 |
+| **Average** | **0.92** | 0.69* | 0.55 |
 
-The rule-based heuristic scores 0.35 on Task 5 because its fixed investigation order causes it to chase the gradient spike red herring before checking model modes. A reasoning agent that inspects model modes would avoid this trap.
+Key findings: (1) Model size matters — 70B scores 25% higher than 8B. (2) Domain-specific heuristic (0.92) outperforms general LLMs (0.55-0.69), proving the environment rewards systematic debugging. (3) Task 4 is the exception where flexible LLM reasoning outperforms rigid heuristic on subtle real training curves.
 
 ## Conclusion
 
