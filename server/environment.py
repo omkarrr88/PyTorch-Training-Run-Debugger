@@ -294,6 +294,10 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
         is_correct_fix: bool | None = None
         convergence = False
 
+        # Snapshot state BEFORE dispatch — reward engine needs pre-action state
+        # to correctly compute investigation bonuses and context-gated penalties
+        state_before = state.model_copy(deep=True)
+
         try:
             is_correct_fix, convergence = self._dispatch_action(action, session)
         except Exception as exc:
@@ -306,7 +310,7 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
                 },
                 exc_info=True,
             )
-            reward = compute_reward(action, state, scenario, is_valid_action=False)
+            reward = compute_reward(action, state_before, scenario, is_valid_action=False)
             obs = self._build_observation(session, reward=reward)
             obs.error_log = f"Internal error processing {action_type}: {exc}"
             return obs
@@ -317,10 +321,10 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
         else:
             state.actions_taken.append(action_type)
 
-        # Compute reward
+        # Compute reward using pre-action state
         reward = compute_reward(
             action,
-            state,
+            state_before,
             scenario,
             is_valid_action=True,
             is_correct_fix=is_correct_fix,

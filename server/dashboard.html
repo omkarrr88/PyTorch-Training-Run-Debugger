@@ -17,6 +17,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
 .panel-title { padding: 10px 16px; font-size: 14px; font-weight: 600; color: #58a6ff; border-bottom: 1px solid #30363d; background: #0d1117; }
 .panel-body { flex: 1; padding: 8px; position: relative; min-height: 0; }
+.panel-body > div:first-child { width: 100%; height: 100%; }
 .placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #484f58; font-style: italic; }
 #controls { display: flex; gap: 8px; align-items: center; }
 #controls select, #controls button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
@@ -47,6 +48,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <option value="task_004">Task 4 — Overfitting (Medium)</option>
       <option value="task_005">Task 5 — BatchNorm Eval (Hard)</option>
       <option value="task_006">Task 6 — Code Bug (Hard)</option>
+      <option value="task_007">Task 7 — Scheduler Misconfigured (Med-Hard)</option>
     </select>
     <button class="primary" onclick="runBaseline()">Run Baseline</button>
   </div>
@@ -220,26 +222,175 @@ function updateSummary(d) {
   document.getElementById('summary').innerHTML = html;
 }
 
+function sendStep(action) {
+  return new Promise(resolve => {
+    const handler = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'observation') {
+        ws.removeEventListener('message', handler);
+        resolve(msg);
+      }
+    };
+    ws.addEventListener('message', handler);
+    ws.send(JSON.stringify({ type: 'step', data: action }));
+  });
+}
+
+function sendReset(taskId) {
+  return new Promise(resolve => {
+    const handler = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'observation') {
+        ws.removeEventListener('message', handler);
+        resolve(msg);
+      }
+    };
+    ws.addEventListener('message', handler);
+    ws.send(JSON.stringify({ type: 'reset', data: { task_id: taskId, seed: 42 } }));
+  });
+}
+
 async function runBaseline() {
   const taskId = document.getElementById('taskSelect').value;
   actions = []; rewards = []; cumRewards = [];
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'reset', data: { task_id: taskId, seed: 42 } }));
-    await new Promise(r => setTimeout(r, 500));
-    // Run the heuristic steps
-    const steps = [
-      { action_type: 'inspect_gradients' },
-      { action_type: 'inspect_data_batch' },
-      { action_type: 'inspect_model_modes' },
-      { action_type: 'inspect_model_weights' },
-      { action_type: 'inspect_code' },
-    ];
-    for (const step of steps) {
-      ws.send(JSON.stringify({ type: 'step', data: step }));
-      await new Promise(r => setTimeout(r, 300));
-      if (obs && obs.done) break;
-    }
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // Reset
+  await sendReset(taskId);
+  await delay(300);
+
+  // Step 1: Inspect gradients
+  await sendStep({ action_type: 'inspect_gradients' });
+  await delay(300);
+
+  const gs = obs && obs.gradient_stats ? obs.gradient_stats : [];
+  const anyExploding = gs.some(g => g.is_exploding);
+  const anyVanishing = gs.some(g => g.is_vanishing);
+
+  if (anyExploding) {
+    await sendStep({ action_type: 'modify_config', target: 'learning_rate', value: 0.001 });
+    await delay(300);
+    await sendStep({ action_type: 'restart_run' });
+    await delay(300);
+    await sendStep({ action_type: 'mark_diagnosed', diagnosis: 'lr_too_high' });
+    return;
   }
+
+  if (anyVanishing) {
+    await sendStep({ action_type: 'modify_config', target: 'learning_rate', value: 0.01 });
+    await delay(300);
+    await sendStep({ action_type: 'restart_run' });
+    await delay(300);
+    await sendStep({ action_type: 'mark_diagnosed', diagnosis: 'vanishing_gradients' });
+    return;
+  }
+
+  // Step 2: Inspect data
+  await sendStep({ action_type: 'inspect_data_batch' });
+  await delay(300);
+
+  const dbs = obs && obs.data_batch_stats ? obs.data_batch_stats : {};
+  if (dbs.class_overlap_score && dbs.class_overlap_score > 0.5) {
+    await sendStep({ action_type: 'patch_data_loader' });
+    await delay(300);
+    await sendStep({ action_type: 'restart_run' });
+    await delay(300);
+    await sendStep({ action_type: 'mark_diagnosed', diagnosis: 'data_leakage' });
+    return;
+  }
+
+  // Check for overfitting (train loss low, val loss rising)
+  const tl = obs && obs.training_loss_history ? obs.training_loss_history : [];
+  const vl = obs && obs.val_loss_history ? obs.val_loss_history : [];
+  const lastTrainLoss = tl.length > 0 ? tl[tl.length - 1] : 999;
+  const lastValLoss = vl.length > 0 ? vl[vl.length - 1] : 0;
+  const earlyValLoss = vl.length > 5 ? vl[5] : lastValLoss;
+  const isOverfitting = lastTrainLoss < 0.1 && lastValLoss > earlyValLoss;
+
+  if (isOverfitting) {
+    await sendStep({ action_type: 'modify_config', target: 'weight_decay', value: 0.01 });
+    await delay(300);
+    await sendStep({ action_type: 'restart_run' });
+    await delay(300);
+    await sendStep({ action_type: 'mark_diagnosed', diagnosis: 'overfitting' });
+    return;
+  }
+
+  // Step 3: Inspect model modes
+  await sendStep({ action_type: 'inspect_model_modes' });
+  await delay(300);
+
+  const modes = obs && obs.model_mode_info ? obs.model_mode_info : {};
+  const anyEval = Object.values(modes).some(m => m === 'eval');
+  if (anyEval) {
+    await sendStep({ action_type: 'fix_model_mode' });
+    await delay(300);
+    await sendStep({ action_type: 'restart_run' });
+    await delay(300);
+    await sendStep({ action_type: 'mark_diagnosed', diagnosis: 'batchnorm_eval_mode' });
+    return;
+  }
+
+  // Step 4: Inspect code
+  await sendStep({ action_type: 'inspect_code' });
+  await delay(300);
+
+  if (obs && obs.code_snippet && obs.code_snippet.code) {
+    const code = obs.code_snippet.code;
+    const lines = code.split('\n');
+    let fixLine = null, fixReplacement = null;
+    for (let i = 0; i < lines.length; i++) {
+      const ln = lines[i].trim();
+      if (ln.includes('model.eval()')) { fixLine = i + 1; fixReplacement = lines[i].replace('model.eval()', 'model.train()'); break; }
+      if (ln.includes('.detach()') && ln.includes('criterion')) { fixLine = i + 1; fixReplacement = lines[i].replace('.detach()', ''); break; }
+      if (ln.includes('inplace=True')) { fixLine = i + 1; fixReplacement = lines[i].replace('inplace=True', ''); break; }
+    }
+    if (fixLine) {
+      await sendStep({ action_type: 'fix_code', line: fixLine, replacement: fixReplacement });
+      await delay(300);
+    } else {
+      // zero_grad_missing — find optimizer.step() and add zero_grad before it
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim().includes('optimizer.step()')) {
+          fixLine = i + 1;
+          fixReplacement = '        optimizer.zero_grad()\n' + lines[i];
+          break;
+        }
+      }
+      if (fixLine) {
+        await sendStep({ action_type: 'fix_code', line: fixLine, replacement: fixReplacement });
+        await delay(300);
+      }
+    }
+    await sendStep({ action_type: 'restart_run' });
+    await delay(300);
+    await sendStep({ action_type: 'mark_diagnosed', diagnosis: 'code_bug' });
+    return;
+  }
+
+  // Step 5: Check for scheduler issue
+  const va = obs && obs.val_accuracy_history ? obs.val_accuracy_history : [];
+  const midAcc = va.length > 10 ? va[9] : 0;
+  const endAcc = va.length > 0 ? va[va.length - 1] : 0;
+  const stagnated = midAcc > 0.3 && (endAcc - midAcc) < 0.05;
+
+  if (stagnated) {
+    await sendStep({ action_type: 'modify_config', target: 'learning_rate', value: 0.005 });
+    await delay(300);
+    await sendStep({ action_type: 'restart_run' });
+    await delay(300);
+    await sendStep({ action_type: 'mark_diagnosed', diagnosis: 'scheduler_misconfigured' });
+    return;
+  }
+
+  // Fallback
+  await sendStep({ action_type: 'modify_config', target: 'weight_decay', value: 0.01 });
+  await delay(300);
+  await sendStep({ action_type: 'restart_run' });
+  await delay(300);
+  await sendStep({ action_type: 'mark_diagnosed', diagnosis: 'overfitting' });
 }
 
 connect();

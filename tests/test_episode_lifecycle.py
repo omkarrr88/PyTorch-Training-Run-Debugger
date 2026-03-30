@@ -51,6 +51,31 @@ class TestStepInspections:
         assert len(obs.gradient_stats) > 0
         assert obs.episode_state.gradients_inspected
 
+    def test_inspect_gradients_gives_investigation_bonus(self, env):
+        """First-time inspection must give +0.05 bonus (total +0.04 with step penalty)."""
+        env.reset(seed=42, episode_id="test", task_id="task_001")
+        obs = env.step(MLTrainingAction(action_type="inspect_gradients"))
+        assert obs.reward == pytest.approx(0.04)
+
+    def test_inspect_data_batch_gives_investigation_bonus(self, env):
+        """First-time data inspection must give +0.05 bonus."""
+        env.reset(seed=42, episode_id="test", task_id="task_003")
+        obs = env.step(MLTrainingAction(action_type="inspect_data_batch"))
+        assert obs.reward == pytest.approx(0.04)
+
+    def test_inspect_model_modes_gives_investigation_bonus(self, env):
+        """First-time model modes inspection must give +0.05 bonus."""
+        env.reset(seed=42, episode_id="test", task_id="task_005")
+        obs = env.step(MLTrainingAction(action_type="inspect_model_modes"))
+        assert obs.reward == pytest.approx(0.04)
+
+    def test_repeat_inspection_no_bonus(self, env):
+        """Second inspection of same type must NOT give bonus."""
+        env.reset(seed=42, episode_id="test", task_id="task_001")
+        env.step(MLTrainingAction(action_type="inspect_gradients"))
+        obs = env.step(MLTrainingAction(action_type="inspect_gradients"))
+        assert obs.reward == pytest.approx(-0.01)
+
     def test_inspect_data_batch(self, env):
         env.reset(seed=42, episode_id="test", task_id="task_003")
         obs = env.step(MLTrainingAction(action_type="inspect_data_batch"))
