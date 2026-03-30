@@ -89,36 +89,24 @@ def run_heuristic_episode(task_id: str, seed: int = 42) -> float:
         session = env._get_session()
         return session.last_score if session and session.last_score is not None else 0.0
 
-    # Check overfitting (val_loss diverging OR train loss near-zero with rising val_loss)
-    if obs.val_loss_history and len(obs.val_loss_history) >= 10:
-        early = sum(obs.val_loss_history[:5]) / 5
-        late = sum(obs.val_loss_history[-5:]) / 5
-        train_loss_low = (
-            obs.training_loss_history
-            and obs.training_loss_history[-1] < 0.1
-        )
-        val_loss_rising = late > early * 1.05
+    # Detect overfitting pattern (used later, after ruling out code bugs)
+    _looks_like_overfitting = False
+    if obs.val_loss_history and obs.training_loss_history and len(obs.val_loss_history) >= 10:
+        early_train = sum(obs.training_loss_history[:5]) / 5
+        late_train = sum(obs.training_loss_history[-5:]) / 5
+        early_val = sum(obs.val_loss_history[:5]) / 5
+        late_val = sum(obs.val_loss_history[-5:]) / 5
+        train_dropped = late_train < early_train * 0.5
+        train_loss_low = late_train < 0.15
+        val_not_improving = late_val >= early_val * 0.95
+        gap_widening = (late_val - late_train) > (early_val - early_train)
         if (
-            (val_loss_rising or train_loss_low)
+            (train_dropped or train_loss_low)
+            and (val_not_improving or gap_widening)
             and obs.data_batch_stats
-            and obs.data_batch_stats.class_overlap_score < 0.1
+            and obs.data_batch_stats.class_overlap_score < 0.3
         ):
-            obs = env.step(
-                MLTrainingAction(
-                    action_type="modify_config",
-                    target="weight_decay",
-                    value=0.01,
-                )
-            )
-            obs = env.step(MLTrainingAction(action_type="restart_run"))
-            obs = env.step(
-                MLTrainingAction(
-                    action_type="mark_diagnosed",
-                    diagnosis="overfitting",
-                )
-            )
-            session = env._get_session()
-            return session.last_score if session and session.last_score is not None else 0.0
+            _looks_like_overfitting = True
 
     # Step 3: inspect_model_modes
     obs = env.step(MLTrainingAction(action_type="inspect_model_modes"))
@@ -193,7 +181,26 @@ def run_heuristic_episode(task_id: str, seed: int = 42) -> float:
             session = env._get_session()
             return session.last_score if session and session.last_score is not None else 0.0
 
-    # Fallback
+    # Overfitting fallback — only if code inspection didn't find a bug
+    if _looks_like_overfitting:
+        obs = env.step(
+            MLTrainingAction(
+                action_type="modify_config",
+                target="weight_decay",
+                value=0.01,
+            )
+        )
+        obs = env.step(MLTrainingAction(action_type="restart_run"))
+        obs = env.step(
+            MLTrainingAction(
+                action_type="mark_diagnosed",
+                diagnosis="overfitting",
+            )
+        )
+        session = env._get_session()
+        return session.last_score if session and session.last_score is not None else 0.0
+
+    # Final fallback
     obs = env.step(
         MLTrainingAction(
             action_type="mark_diagnosed",
