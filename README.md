@@ -357,13 +357,6 @@ All layers stuck in eval mode. BatchNorm is using running statistics instead of 
 
 **What would have gone wrong:**
 If the agent had seen the FC gradient spike and called `add_callback` (gradient clipping), it would have received -0.20 context-gated penalty — because it already knew gradients were normal. The penalty only fires when both `gradients_inspected=True` and `gradients_were_normal=True`. Before inspection, the same action would have no penalty.
-
-## Research Summary
-
-See [PAPER.md](PAPER.md) — "Context-Gated Reward Shaping for Evidence-Based ML Debugging"
-
-Core claim: by conditioning penalties on the agent's accumulated information state (not just action outcomes), we create environments that reward systematic investigation over pattern-matching — a capability with direct transfer value to real-world MLOps debugging.
-
 ---
 
 *Built for the Meta PyTorch OpenEnv Hackathon x Scaler School of Technology, 2026.*
