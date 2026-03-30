@@ -76,6 +76,13 @@ app.routes[:] = [
 _baseline_lock = asyncio.Lock()
 
 
+@app.get("/")
+def root():
+    """Redirect root to dashboard."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard")
+
+
 @app.get("/health")
 def health_check() -> dict:
     """Health check — required by hackathon auto-validator."""
