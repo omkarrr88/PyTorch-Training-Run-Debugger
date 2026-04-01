@@ -3,3 +3,6 @@ pydantic>=2.0
 fastapi
 uvicorn
 openai
+websockets
+# torch is installed separately with CPU-only index:
+# pip install torch --index-url https://download.pytorch.org/whl/cpu

@@ -127,19 +127,22 @@ def grade_task_004(state: EpisodeState, scenario: ScenarioParams) -> float:
 def grade_task_005(state: EpisodeState, scenario: ScenarioParams) -> float:
     """Grade Task 5 — BatchNorm Eval Mode (hard). Spec Section 11.
 
+    Hard task requires thorough investigation for full credit.
     Context-gated penalty: -0.20 if add_callback after gradients_were_normal.
+    Wrong-fix penalty: -0.10 if modify_config used (LR isn't the problem).
+    Full credit requires inspecting gradients, weights, data, AND modes.
     """
     score = 0.0
 
-    # +0.05 for inspect_gradients
+    # Investigation credits (+0.05 each, max +0.15 for 3 types)
     if state.gradients_inspected:
         score += 0.05
-
-    # +0.05 for inspect_model_modes — the revealing action
     if state.model_modes_inspected:
         score += 0.05
+    if state.data_inspected:
+        score += 0.05
 
-    # -0.20 for add_callback after gradients_were_normal
+    # Red herring penalty: -0.20 for add_callback after normal gradients
     if (
         _has_action(state, "add_callback")
         and state.gradients_inspected
@@ -147,13 +150,26 @@ def grade_task_005(state: EpisodeState, scenario: ScenarioParams) -> float:
     ):
         score -= 0.20
 
-    # +0.25 for fix_model_mode
-    if _has_action(state, "fix_model_mode"):
-        score += 0.25
+    # Wrong-fix penalty: -0.10 for modify_config (LR isn't the issue here)
+    if _has_action(state, "modify_config"):
+        score -= 0.10
 
-    # +0.30 for restart with convergence
+    # Fix credit scaled by investigation thoroughness
+    # Full credit requires weight inspection (rules out weight-related causes)
+    if _has_action(state, "fix_model_mode"):
+        if state.model_weights_inspected and state.data_inspected:
+            score += 0.25  # Thorough: checked weights AND data
+        elif state.model_weights_inspected or state.data_inspected:
+            score += 0.15  # Partial thoroughness
+        else:
+            score += 0.08  # Quick fix without ruling out alternatives
+
+    # Restart credit scaled similarly
     if state.restart_after_fix:
-        score += 0.30
+        if state.model_weights_inspected:
+            score += 0.20  # Full restart credit
+        else:
+            score += 0.10  # Partial credit
 
     # +0.40 for correct diagnosis
     if _correct_diagnosis(state, scenario):
@@ -166,6 +182,7 @@ def grade_task_006(state: EpisodeState, scenario: ScenarioParams) -> float:
     """Grade Task 6 — PyTorch Code Bug (hard). Spec Section 11.
 
     Diagnosis must ALWAYS be 'code_bug' regardless of bug variant.
+    Hard task rewards thorough investigation before fixing.
     """
     score = 0.0
 
@@ -173,17 +190,23 @@ def grade_task_006(state: EpisodeState, scenario: ScenarioParams) -> float:
     if state.code_inspected:
         score += 0.05
 
-    # +0.30 for correct code fix
+    # Thoroughness bonus: inspecting other systems first rules out non-code causes
+    if state.gradients_inspected:
+        score += 0.05
+    if state.model_modes_inspected:
+        score += 0.05
+
+    # Code fix credit (reduced base, bonus for thorough investigation)
     if _has_action(state, "fix_code") and state.fix_action_taken:
-        score += 0.30
+        score += 0.20
 
-    # +0.25 for restart with convergence
+    # Restart credit
     if state.restart_after_fix:
-        score += 0.25
+        score += 0.20
 
-    # +0.40 for correct diagnosis (must be code_bug)
+    # +0.45 for correct diagnosis (must be code_bug)
     if _correct_diagnosis(state, scenario):
-        score += 0.40
+        score += 0.45
 
     return min(1.0, max(0.0, score))
 

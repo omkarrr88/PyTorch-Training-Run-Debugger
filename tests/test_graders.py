@@ -109,7 +109,32 @@ class TestGradeTask003:
 
 
 class TestGradeTask005:
-    def test_perfect_score(self, scenario_005):
+    def test_perfect_score_thorough(self, scenario_005):
+        """Thorough agent inspects weights AND data — gets perfect score."""
+        state = EpisodeState(
+            gradients_inspected=True,
+            gradients_were_normal=True,
+            model_modes_inspected=True,
+            model_weights_inspected=True,
+            data_inspected=True,
+            fix_action_taken=True,
+            restart_after_fix=True,
+            diagnosis_submitted=True,
+            actions_taken=[
+                "inspect_gradients",
+                "inspect_data_batch",
+                "inspect_model_weights",
+                "inspect_model_modes",
+                "fix_model_mode",
+                "restart_run",
+                "mark_diagnosed:batchnorm_eval_mode",
+            ],
+        )
+        score = grade_task_005(state, scenario_005)
+        assert score == pytest.approx(1.0)
+
+    def test_quick_fix_partial_credit(self, scenario_005):
+        """Agent that skips weight inspection gets partial credit."""
         state = EpisodeState(
             gradients_inspected=True,
             gradients_were_normal=True,
@@ -126,10 +151,11 @@ class TestGradeTask005:
             ],
         )
         score = grade_task_005(state, scenario_005)
-        assert score == 1.0
+        # No weights, no data → 0.05+0.05+0.08+0.10+0.40 = 0.68
+        assert score == pytest.approx(0.68)
 
     def test_red_herring_chaser(self, scenario_005):
-        """Agent that chases gradient red herring scores 0.80-0.85."""
+        """Agent that chases gradient red herring loses 0.20."""
         state = EpisodeState(
             gradients_inspected=True,
             gradients_were_normal=True,
@@ -148,7 +174,52 @@ class TestGradeTask005:
         )
         score = grade_task_005(state, scenario_005)
         # -0.20 penalty for add_callback after normal gradients
-        assert 0.7 <= score <= 0.90
+        assert score == pytest.approx(0.48)
+
+    def test_wrong_fix_penalty(self, scenario_005):
+        """Agent that tries modify_config (wrong fix) gets penalized."""
+        state = EpisodeState(
+            gradients_inspected=True,
+            gradients_were_normal=True,
+            model_modes_inspected=True,
+            fix_action_taken=True,
+            restart_after_fix=True,
+            diagnosis_submitted=True,
+            actions_taken=[
+                "inspect_gradients",
+                "modify_config",  # Wrong: LR isn't the problem
+                "inspect_model_modes",
+                "fix_model_mode",
+                "restart_run",
+                "mark_diagnosed:batchnorm_eval_mode",
+            ],
+        )
+        score = grade_task_005(state, scenario_005)
+        # -0.10 penalty for modify_config on task 5
+        assert score == pytest.approx(0.58)
+
+    def test_double_trap_devastates_score(self, scenario_005):
+        """Agent that falls for BOTH traps (add_callback + modify_config) scores poorly."""
+        state = EpisodeState(
+            gradients_inspected=True,
+            gradients_were_normal=True,
+            model_modes_inspected=True,
+            fix_action_taken=True,
+            restart_after_fix=True,
+            diagnosis_submitted=True,
+            actions_taken=[
+                "inspect_gradients",
+                "add_callback",
+                "modify_config",
+                "inspect_model_modes",
+                "fix_model_mode",
+                "restart_run",
+                "mark_diagnosed:batchnorm_eval_mode",
+            ],
+        )
+        score = grade_task_005(state, scenario_005)
+        # -0.20 (add_callback) + -0.10 (modify_config) = -0.30 penalties
+        assert score == pytest.approx(0.38)
 
 
 class TestGradeEpisode:

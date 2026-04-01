@@ -33,6 +33,7 @@ echo "Copying files..."
 rsync -av --exclude='.venv' --exclude='__pycache__' --exclude='.git' \
     --exclude='.hf-space' --exclude='tests' --exclude='validation' \
     --exclude='.claude' --exclude='*.pyc' --exclude='run*.json' \
+    --exclude='.env' --exclude='.coverage' --exclude='uv.lock' \
     . .hf-space/
 
 # Copy validation report (pre-computed)

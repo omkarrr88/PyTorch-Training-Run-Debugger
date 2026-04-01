@@ -24,6 +24,7 @@ import json
 import os
 import sys
 import time
+import urllib.request
 
 try:
     from openai import OpenAI
@@ -113,7 +114,7 @@ async def run_llm_episode(
     task_id: str, ws_url: str, client: OpenAI, model_name: str
 ) -> float:
     """Run one LLM agent episode via WebSocket. Returns grader score."""
-    async with websockets.connect(ws_url) as ws:
+    async with websockets.connect(ws_url, ping_interval=20, ping_timeout=10) as ws:
         # Reset
         await ws.send(json.dumps({
             "type": "reset",
@@ -155,6 +156,7 @@ async def run_llm_episode(
                     messages=messages,
                     temperature=0.0,
                     max_tokens=300,
+                    timeout=30,
                 )
                 action_text = response.choices[0].message.content.strip()
             except Exception as e:
@@ -188,17 +190,30 @@ async def run_llm_episode(
                 "content": f"Observation after your action:\n{json.dumps(summary, indent=2, default=str)}",
             })
 
-    # Get grader score
-    import urllib.request
+    # Get grader score via HTTP POST
     env_url = os.environ.get("ENV_URL", "http://localhost:7860")
     try:
         req = urllib.request.Request(f"{env_url}/grader", method="POST")
         grader_resp = json.loads(urllib.request.urlopen(req, timeout=10).read())
         last_score = grader_resp.get("score", 0.0) or 0.0
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"    Grader request failed: {e}", file=sys.stderr)
 
     return last_score
+
+
+async def _run_with_timeout(
+    task_id: str, ws_url: str, client: OpenAI, model_name: str
+) -> float:
+    """Run episode with per-task timeout (150s = 2.5 min per task)."""
+    try:
+        return await asyncio.wait_for(
+            run_llm_episode(task_id, ws_url, client, model_name),
+            timeout=150,
+        )
+    except asyncio.TimeoutError:
+        print(f"    {task_id}: TIMEOUT (>150s)", file=sys.stderr)
+        return 0.0
 
 
 def main() -> None:
@@ -242,7 +257,7 @@ def main() -> None:
     for task_id in ALL_TASKS:
         task_start = time.time()
         try:
-            score = asyncio.run(run_llm_episode(task_id, ws_url, client, model_name))
+            score = asyncio.run(_run_with_timeout(task_id, ws_url, client, model_name))
             scores[task_id] = round(score, 4)
             elapsed = time.time() - task_start
             print(f"  {task_id}: {score:.4f} ({elapsed:.1f}s)", file=sys.stderr)
@@ -251,6 +266,11 @@ def main() -> None:
             scores[task_id] = 0.0
 
     total_time = time.time() - start_time
+    if total_time > 1100:
+        print(
+            f"\nWARNING: Total time {total_time:.0f}s approaching 20-minute limit",
+            file=sys.stderr,
+        )
     print(f"\nTotal time: {total_time:.1f}s", file=sys.stderr)
     print(json.dumps(scores, indent=2))
 

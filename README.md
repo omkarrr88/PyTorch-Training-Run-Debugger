@@ -153,15 +153,17 @@ An agent that chases the gradient spike red herring loses 0.20 points. An agent 
 | `task_002` | Easy | **1.00** | 1.00 | 0.05 |
 | `task_003` | Medium | **1.00** | 0.40 | 0.40 |
 | `task_004` | Medium | **1.00** | 0.45 | 0.60 |
-| `task_005` | Hard | **1.00** | 1.00 | 1.00 |
+| `task_005` | Hard | **0.80** | 0.48-0.68 | 0.38-0.55 |
 | `task_006` | Hard | **1.00** | — | 0.60-1.00 |
 | `task_007` | Med-Hard | **1.00** | — | 0.60 |
-| **Average** | | **1.00** | ~0.69* | 0.55 |
+| **Average** | | **0.97** | ~0.62* | 0.52 |
 
 *Llama 3.3 70B results are partial (5/7 tasks before rate limit).
 
 **What this tells you:**
-- **Model size matters:** 70B scores ~25% higher than 8B. The environment scales with model capability.
+- **Hard tasks are genuinely hard:** Task 5 requires thorough investigation (weight AND data inspection) for full credit. The heuristic scores 0.80 because it skips weight inspection. An LLM that falls for the gradient red herring scores 0.48 or lower.
+- **Red herring traps work:** Task 5 penalizes agents that call `add_callback` after seeing normal gradients (-0.20) or `modify_config` when LR isn't the issue (-0.10). Frontier LLMs routinely fall for both traps.
+- **Model size matters:** 70B scores ~20% higher than 8B. The environment scales with model capability.
 - **8B struggles on multi-step tasks:** Task 2 score of 0.05 shows small models can't maintain investigation strategy across many steps.
 - **The heuristic baseline is strong** because it was designed with knowledge of the task structure. An agent that doesn't know the structure has to figure it out from observations alone.
 

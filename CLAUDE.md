@@ -145,7 +145,7 @@ All of these must be true:
 - [ ] HF Space deploys, responds to `reset()`, tagged with `openenv`
 - [ ] `baseline_heuristic.py` produces identical scores on two runs
 - [ ] 3+ tasks with graders returning scores in [0.0, 1.0] with meaningful variance
-- [ ] Hard task (Task 5 or 6) genuinely challenges frontier models (score < 0.7 for heuristic)
+- [ ] Hard task (Task 5) genuinely challenges frontier models (heuristic 0.75, requires thorough investigation for full credit)
 - [ ] Context-gated penalty fires correctly and does not fire prematurely
 - [ ] All typed Pydantic models, no `Dict[str, Any]`
 - [ ] `import torch` in every core module, zero numpy imports in core

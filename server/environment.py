@@ -11,7 +11,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import torch
 from openenv.core.env_server.interfaces import Environment
@@ -28,8 +28,10 @@ from ml_training_debugger.models import (
     CodeSnippet,
     DataBatchStats,
     EpisodeState,
+    GradientStats,
     MLTrainingAction,
     MLTrainingObservation,
+    ModelWeightStats,
     TrainingConfig,
 )
 from ml_training_debugger.pytorch_engine import (
@@ -59,11 +61,11 @@ class SessionData:
     model: torch.nn.Module
     state: EpisodeState
     config: TrainingConfig
-    gradient_stats: list[Any]
-    weight_stats: list[Any] | None
+    gradient_stats: list[GradientStats]
+    weight_stats: list[ModelWeightStats] | None
     model_modes: dict[str, str] | None
-    data_batch_stats_raw: dict | None
-    code_snippet_raw: dict | None
+    data_batch_stats_raw: dict[str, Union[int, float, list, dict, None]] | None
+    code_snippet_raw: dict[str, Union[str, int, list, None]] | None
     loss_history: list[float]
     val_acc_history: list[float]
     val_loss_history: list[float]

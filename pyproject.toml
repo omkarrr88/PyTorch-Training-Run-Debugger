@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.0",
     "fastapi",
     "uvicorn",
+    "websockets",
 ]
 
 [project.scripts]
@@ -23,7 +24,6 @@ dev = [
     "ruff",
     "isort",
     "httpx",
-    "websockets",
 ]
 llm = [
     "openai",
