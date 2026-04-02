@@ -1,8 +1,8 @@
-openenv-core
-pydantic>=2.0
-fastapi
-uvicorn
-openai
-websockets
+openenv-core==0.2.2
+pydantic>=2.0,<3.0
+fastapi>=0.115.0,<1.0
+uvicorn>=0.30.0,<1.0
+openai>=1.0.0,<3.0
+websockets>=13.0,<17.0
 # torch is installed separately with CPU-only index:
 # pip install torch --index-url https://download.pytorch.org/whl/cpu

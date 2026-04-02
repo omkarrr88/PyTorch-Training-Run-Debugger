@@ -72,7 +72,7 @@ tasks:
       bug_type: [eval_mode, detach_loss, zero_grad_missing, inplace_relu]
 
   - id: task_007
-    difficulty: medium-hard
+    difficulty: hard
     max_steps: 25
     param_ranges:
       scheduler_gamma: [0.01, 0.001, 0.0001]

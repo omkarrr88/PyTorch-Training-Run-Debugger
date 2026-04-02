@@ -2,6 +2,8 @@
 
 **OpenEnv RL Environment** | Meta PyTorch OpenEnv Hackathon x Scaler School of Technology
 
+**Live Demo:** [HF Space](https://ujjwalpardeshi-pytorch-training-debugger.hf.space/dashboard) | **API Health:** [/health](https://ujjwalpardeshi-pytorch-training-debugger.hf.space/health) | **API Docs:** [/docs](https://ujjwalpardeshi-pytorch-training-debugger.hf.space/docs)
+
 An AI agent debugs broken PyTorch training runs by investigating gradients, model weights, data pipelines, and source code to diagnose and fix real ML failure patterns.
 
 ---

@@ -55,7 +55,7 @@ ALL_TASKS = [
     {"id": "task_004", "difficulty": "medium", "max_steps": 25},
     {"id": "task_005", "difficulty": "hard", "max_steps": 30},
     {"id": "task_006", "difficulty": "hard", "max_steps": 30},
-    {"id": "task_007", "difficulty": "medium-hard", "max_steps": 25},
+    {"id": "task_007", "difficulty": "hard", "max_steps": 25},
 ]
 
 # create_app takes the class (factory), not an instance
