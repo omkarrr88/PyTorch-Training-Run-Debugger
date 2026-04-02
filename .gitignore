@@ -16,3 +16,7 @@ validation/reports/*.png
 .claude/
 CLAUDE.md
 .hf-space/
+.python-version
+uv.lock
+deploy-hf.sh
+deploy.sh
