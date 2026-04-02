@@ -183,26 +183,35 @@ def grade_task_006(state: EpisodeState, scenario: ScenarioParams) -> float:
 
     Diagnosis must ALWAYS be 'code_bug' regardless of bug variant.
     Hard task rewards thorough investigation before fixing.
+    Full credit requires ruling out non-code causes via weight inspection.
     """
     score = 0.0
 
-    # +0.05 for inspect_code
+    # Investigation credits (+0.05 each, up to +0.25 for all 5 types)
     if state.code_inspected:
         score += 0.05
-
-    # Thoroughness bonus: inspecting other systems first rules out non-code causes
     if state.gradients_inspected:
         score += 0.05
     if state.model_modes_inspected:
         score += 0.05
+    if state.model_weights_inspected:
+        score += 0.05
+    if state.data_inspected:
+        score += 0.05
 
-    # Code fix credit (reduced base, bonus for thorough investigation)
+    # Code fix credit scaled by investigation thoroughness
     if _has_action(state, "fix_code") and state.fix_action_taken:
-        score += 0.20
+        if state.model_weights_inspected:
+            score += 0.15  # Thorough: ruled out weight-related causes
+        else:
+            score += 0.08  # Quick fix without full investigation
 
-    # Restart credit
+    # Restart credit scaled by thoroughness
     if state.restart_after_fix:
-        score += 0.20
+        if state.model_weights_inspected:
+            score += 0.15  # Full restart credit
+        else:
+            score += 0.08  # Partial credit
 
     # +0.45 for correct diagnosis (must be code_bug)
     if _correct_diagnosis(state, scenario):
@@ -212,19 +221,45 @@ def grade_task_006(state: EpisodeState, scenario: ScenarioParams) -> float:
 
 
 def grade_task_007(state: EpisodeState, scenario: ScenarioParams) -> float:
-    """Grade Task 7 — LR Scheduler Misconfigured (medium-hard). Spec extension."""
+    """Grade Task 7 — LR Scheduler Misconfigured (hard). Spec extension.
+
+    Requires thorough investigation: agents must inspect weights to rule out
+    weight-related issues before concluding scheduler is the root cause.
+    Penalizes wrong fixes (e.g. patch_data_loader when data is fine).
+    """
     score = 0.0
 
+    # Investigation credits (+0.05 each, up to +0.20 for all 4 types)
     if state.gradients_inspected:
         score += 0.05
     if state.data_inspected:
         score += 0.05
+    if state.model_weights_inspected:
+        score += 0.05
+    if state.model_modes_inspected:
+        score += 0.05
+
+    # Fix credit scaled by investigation thoroughness
     if _has_action(state, "modify_config"):
-        score += 0.25
+        if state.model_weights_inspected:
+            score += 0.20  # Thorough: ruled out weight issues
+        else:
+            score += 0.12  # Partial: didn't check weights
+
+    # Restart credit scaled by thoroughness
     if state.restart_after_fix:
-        score += 0.25
+        if state.model_weights_inspected:
+            score += 0.20  # Full restart credit
+        else:
+            score += 0.12  # Partial credit
+
+    # Diagnosis
     if _correct_diagnosis(state, scenario):
         score += 0.40
+
+    # Wrong-fix penalty: patch_data_loader when data is clean
+    if _has_action(state, "patch_data_loader"):
+        score -= 0.10
 
     return min(1.0, max(0.0, score))
 

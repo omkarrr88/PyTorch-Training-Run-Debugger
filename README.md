@@ -107,6 +107,7 @@ Fields like `gradient_stats`, `data_batch_stats`, `model_mode_info`, and `code_s
 
 **Terminal** — end the episode:
 - `restart_run` — restart training (only available after a fix)
+- `rollback_checkpoint` — rollback to pre-fix state (only available after restart)
 - `mark_diagnosed` — submit diagnosis from 7 possible root causes
 
 Actions are dynamically available based on episode state: `fix_code` requires prior code inspection, `restart_run` requires a fix, `mark_diagnosed` disappears after submission.
@@ -156,13 +157,14 @@ An agent that chases the gradient spike red herring loses 0.20 points. An agent 
 | `task_003` | Medium | **1.00** | 0.40 |
 | `task_004` | Medium | **1.00** | 0.60 |
 | `task_005` | Hard | **0.80** | 0.38-0.55 |
-| `task_006` | Hard | **1.00** | 0.60-1.00 |
-| `task_007` | Hard | **1.00** | 0.60 |
-| **Average** | | **0.97** | 0.52 |
+| `task_006` | Hard | **0.81** | 0.60-1.00 |
+| `task_007` | Hard | **0.79** | 0.60 |
+| **Average** | | **0.91** | 0.52 |
 
 **What this tells you:**
-- **Hard tasks are genuinely hard:** Task 5 requires thorough investigation (weight AND data inspection) for full credit. The heuristic scores 0.80 because it skips weight inspection. An LLM that falls for the gradient red herring scores 0.48 or lower.
+- **Hard tasks are genuinely hard:** All three hard tasks (5, 6, 7) require thorough investigation including weight inspection for full credit. The heuristic scores 0.79-0.81 on hard tasks because it skips weight inspection. An LLM that falls for red herrings or skips investigation scores even lower.
 - **Red herring traps work:** Task 5 penalizes agents that call `add_callback` after seeing normal gradients (-0.20) or `modify_config` when LR isn't the issue (-0.10). LLMs routinely fall for both traps.
+- **Investigation thoroughness matters:** Tasks 6 and 7 scale fix/restart credit based on how thoroughly the agent investigated before acting. Quick fixes without ruling out alternatives score ~60-65% of full credit.
 - **8B struggles on multi-step tasks:** Task 2 score of 0.05 shows small models can't maintain investigation strategy across many steps.
 - **The heuristic baseline is strong** because it was designed with knowledge of the task structure. An agent that doesn't know the structure has to figure it out from observations alone.
 
@@ -247,7 +249,7 @@ pip install pytest pytest-cov pytest-asyncio httpx websockets
 # Start server
 uvicorn server.app:app --host 0.0.0.0 --port 7860
 
-# Run tests (255 tests, 97% coverage)
+# Run tests (246 tests, 96% coverage)
 pytest tests/ -v --cov=ml_training_debugger
 
 # Run heuristic baseline
@@ -284,7 +286,7 @@ ml_training_debugger/
     models.py            — Pydantic data models (Action, Observation, EpisodeState)
     scenarios.py         — Task parameter sampling (7 tasks, deterministic per seed)
     pytorch_engine.py    — Real PyTorch models, fault injection, gradient/weight extraction
-    simulation.py        — 20-epoch real training with parametric fallback
+    simulation.py        — 20-epoch real training with fault injection
     reward_engine.py     — 7-component per-step reward with context gating
     graders.py           — Per-task holistic 0.0-1.0 scoring
     code_templates.py    — Task 6 bug variants + 4-strategy fix validation
@@ -295,7 +297,7 @@ server/
     app.py               — FastAPI + custom endpoints
     dashboard.html       — Live Plotly.js diagnostic dashboard
 
-tests/                   — 255 tests, 97% coverage
+tests/                   — 246 tests, 96% coverage
 baseline_heuristic.py    — Rule-based agent (deterministic, no API key)
 baseline_inference.py    — LLM agent (Groq/Cerebras/Gemini/OpenAI)
 ```

@@ -10,6 +10,7 @@ from ml_training_debugger.graders import (
     grade_task_001,
     grade_task_003,
     grade_task_005,
+    grade_task_006,
     grade_task_007,
 )
 from ml_training_debugger.models import EpisodeState
@@ -241,8 +242,149 @@ class TestGradeEpisode:
         assert score == 0.0
 
 
+class TestGradeTask006:
+    @pytest.fixture
+    def scenario_006(self):
+        return sample_scenario("task_006", seed=42)
+
+    def test_perfect_score_thorough(self, scenario_006):
+        """Thorough agent inspects ALL systems including weights — gets perfect score."""
+        state = EpisodeState(
+            code_inspected=True,
+            gradients_inspected=True,
+            model_modes_inspected=True,
+            model_weights_inspected=True,
+            data_inspected=True,
+            fix_action_taken=True,
+            restart_after_fix=True,
+            diagnosis_submitted=True,
+            actions_taken=[
+                "inspect_gradients",
+                "inspect_data_batch",
+                "inspect_model_weights",
+                "inspect_model_modes",
+                "inspect_code",
+                "fix_code",
+                "restart_run",
+                "mark_diagnosed:code_bug",
+            ],
+        )
+        score = grade_task_006(state, scenario_006)
+        assert score == pytest.approx(1.0)
+
+    def test_no_weights_inspection_partial(self, scenario_006):
+        """Agent that skips weight inspection gets reduced fix/restart credit."""
+        state = EpisodeState(
+            code_inspected=True,
+            gradients_inspected=True,
+            model_modes_inspected=True,
+            data_inspected=True,
+            fix_action_taken=True,
+            restart_after_fix=True,
+            diagnosis_submitted=True,
+            actions_taken=[
+                "inspect_gradients",
+                "inspect_data_batch",
+                "inspect_model_modes",
+                "inspect_code",
+                "fix_code",
+                "restart_run",
+                "mark_diagnosed:code_bug",
+            ],
+        )
+        score = grade_task_006(state, scenario_006)
+        # 0.05*4 + 0.08 + 0.08 + 0.45 = 0.81
+        assert score == pytest.approx(0.81)
+        assert score < 1.0  # Must not be perfect without weights
+
+    def test_minimal_investigation(self, scenario_006):
+        """Agent that only inspects code, fixes, and diagnoses."""
+        state = EpisodeState(
+            code_inspected=True,
+            fix_action_taken=True,
+            restart_after_fix=True,
+            diagnosis_submitted=True,
+            actions_taken=[
+                "inspect_code",
+                "fix_code",
+                "restart_run",
+                "mark_diagnosed:code_bug",
+            ],
+        )
+        score = grade_task_006(state, scenario_006)
+        # 0.05 + 0.08 + 0.08 + 0.45 = 0.66
+        assert score == pytest.approx(0.66)
+
+    def test_wrong_diagnosis(self, scenario_006):
+        """Submitting batchnorm_eval_mode on a code_bug task fails."""
+        state = EpisodeState(
+            code_inspected=True,
+            diagnosis_submitted=True,
+            actions_taken=[
+                "inspect_code",
+                "mark_diagnosed:batchnorm_eval_mode",
+            ],
+        )
+        score = grade_task_006(state, scenario_006)
+        assert score < 0.2  # Only gets code_inspected bonus
+
+    def test_score_in_range(self, scenario_006):
+        state = EpisodeState()
+        score = grade_task_006(state, scenario_006)
+        assert 0.0 <= score <= 1.0
+
+
 class TestGradeTask007:
-    def test_perfect_score(self):
+    def test_perfect_score_thorough(self):
+        """Thorough agent inspects weights — gets perfect score."""
+        scenario = sample_scenario("task_007", seed=42)
+        state = EpisodeState(
+            gradients_inspected=True,
+            data_inspected=True,
+            model_weights_inspected=True,
+            model_modes_inspected=True,
+            fix_action_taken=True,
+            restart_after_fix=True,
+            diagnosis_submitted=True,
+            actions_taken=[
+                "inspect_gradients",
+                "inspect_data_batch",
+                "inspect_model_weights",
+                "inspect_model_modes",
+                "modify_config",
+                "restart_run",
+                "mark_diagnosed:scheduler_misconfigured",
+            ],
+        )
+        score = grade_task_007(state, scenario)
+        assert score == pytest.approx(1.0)
+
+    def test_no_weights_partial(self):
+        """Agent without weight inspection gets reduced fix/restart credit."""
+        scenario = sample_scenario("task_007", seed=42)
+        state = EpisodeState(
+            gradients_inspected=True,
+            data_inspected=True,
+            model_modes_inspected=True,
+            fix_action_taken=True,
+            restart_after_fix=True,
+            diagnosis_submitted=True,
+            actions_taken=[
+                "inspect_gradients",
+                "inspect_data_batch",
+                "inspect_model_modes",
+                "modify_config",
+                "restart_run",
+                "mark_diagnosed:scheduler_misconfigured",
+            ],
+        )
+        score = grade_task_007(state, scenario)
+        # 0.05*3 + 0.12 + 0.12 + 0.40 = 0.79
+        assert score == pytest.approx(0.79)
+        assert score < 1.0
+
+    def test_wrong_fix_penalty(self):
+        """Agent that patches data loader (wrong fix) gets penalized."""
         scenario = sample_scenario("task_007", seed=42)
         state = EpisodeState(
             gradients_inspected=True,
@@ -253,13 +395,15 @@ class TestGradeTask007:
             actions_taken=[
                 "inspect_gradients",
                 "inspect_data_batch",
+                "patch_data_loader",
                 "modify_config",
                 "restart_run",
                 "mark_diagnosed:scheduler_misconfigured",
             ],
         )
         score = grade_task_007(state, scenario)
-        assert score == 1.0
+        # Normal partial score minus 0.10 penalty
+        assert score < 0.75
 
     def test_wrong_diagnosis(self):
         scenario = sample_scenario("task_007", seed=42)

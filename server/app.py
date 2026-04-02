@@ -12,7 +12,7 @@ import sys
 from typing import Optional
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from openenv.core.env_server.http_server import create_app
 
 from ml_training_debugger.models import MLTrainingAction, MLTrainingObservation
@@ -77,9 +77,8 @@ _baseline_lock = asyncio.Lock()
 
 
 @app.get("/")
-def root():
+def root() -> RedirectResponse:
     """Redirect root to dashboard."""
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/dashboard")
 
 
@@ -174,7 +173,7 @@ def post_grader(session_id: Optional[str] = None) -> dict:
 
 
 @app.post("/baseline", response_model=None)
-async def post_baseline():
+async def post_baseline() -> JSONResponse | dict:
     """Trigger baseline run, return scores for all tasks.
 
     Returns 409 if already running. Uses asyncio.Lock for thread safety.
