@@ -17,7 +17,6 @@ validation/reports/*.png
 CLAUDE.md
 .hf-space/
 .python-version
-uv.lock
 deploy-hf.sh
 deploy.sh
 AUDIT_REPORT.md
