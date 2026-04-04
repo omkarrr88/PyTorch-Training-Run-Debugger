@@ -9,12 +9,11 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from server.app import (
-    ALL_TASKS,
+from server.app import ALL_TASKS, app
+from server._heuristic import (
     _get_score,
-    _run_baseline_sync,
     _run_heuristic_episode,
-    app,
+    run_baseline_all_tasks as _run_baseline_sync,
 )
 from server.environment import MLTrainingEnvironment
 

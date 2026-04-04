@@ -110,12 +110,15 @@ def get_validation_report() -> dict:
     )
     if report_path.exists():
         return json.loads(report_path.read_text())
-    return {"error": "Validation report not yet generated. Run: python validation/run_all_validations.py"}
+    return {
+        "error": "Validation report not yet generated. "
+        "Run: python validation/run_all_validations.py"
+    }
 
 
 @app.get("/curriculum")
 def get_curriculum() -> dict:
-    """Recommended task order for RL agent training (easy → hard, with difficulty scaling)."""
+    """Recommended task order (easy to hard, with difficulty scaling)."""
     curriculum: list[dict] = []
     for task in ALL_TASKS:
         for level in [1, 3, 5]:
@@ -134,9 +137,12 @@ def get_leaderboard() -> dict:
     from server._baseline_results import _last_results
 
     entries = [
-        v for k, v in _last_results.items() if k != "_latest" and isinstance(v, dict)
+        v for k, v in _last_results.items()
+        if k != "_latest" and isinstance(v, dict)
     ]
-    sorted_entries = sorted(entries, key=lambda x: x.get("score", 0), reverse=True)
+    sorted_entries = sorted(
+        entries, key=lambda x: x.get("score", 0), reverse=True
+    )
     return {"entries": sorted_entries, "total": len(sorted_entries)}
 
 
@@ -160,12 +166,7 @@ def get_tasks() -> list[dict]:
 
 @app.post("/grader")
 def post_grader(session_id: Optional[str] = None) -> dict:
-    """Return grader score for most recently completed episode.
-
-    Edge cases per spec Section 14:
-    - No episode completed → {"score": null, "error": "no_completed_episode"}
-    - Episode completed → {"score": float, "task_id": str, "steps": int}
-    """
+    """Return grader score for most recently completed episode."""
     result = get_last_grader_result(session_id)
     if result is None:
         return {"score": None, "error": "no_completed_episode"}
@@ -174,10 +175,7 @@ def post_grader(session_id: Optional[str] = None) -> dict:
 
 @app.post("/baseline", response_model=None)
 async def post_baseline() -> JSONResponse | dict:
-    """Trigger baseline run, return scores for all tasks.
-
-    Returns 409 if already running. Uses asyncio.Lock for thread safety.
-    """
+    """Trigger baseline run, return scores for all tasks."""
     if _baseline_lock.locked():
         return JSONResponse(
             status_code=409,
@@ -185,212 +183,12 @@ async def post_baseline() -> JSONResponse | dict:
         )
 
     async with _baseline_lock:
+        from server._heuristic import run_baseline_all_tasks
+
         scores = await asyncio.get_event_loop().run_in_executor(
-            None, _run_baseline_sync
+            None, run_baseline_all_tasks
         )
         return {"scores": scores}
-
-
-def _run_baseline_sync() -> dict[str, float]:
-    """Run the rule-based baseline synchronously."""
-    scores: dict[str, float] = {}
-
-    for task_info in ALL_TASKS:
-        task_id = task_info["id"]
-        env = MLTrainingEnvironment()
-        env.reset(seed=42, episode_id=f"baseline_{task_id}", task_id=task_id)
-        score = _run_heuristic_episode(env, task_id)
-        scores[task_id] = round(score, 4)
-
-    return scores
-
-
-def _run_heuristic_episode(
-    env: MLTrainingEnvironment,
-    task_id: str,
-) -> float:
-    """Run one heuristic baseline episode. Returns grader score.
-
-    Decision tree per spec Section 17.
-    """
-    # Step 1: inspect_gradients
-    obs = env.step(MLTrainingAction(action_type="inspect_gradients"))
-
-    if obs.gradient_stats:
-        # Check exploding
-        if any(g.is_exploding for g in obs.gradient_stats):
-            env.step(
-                MLTrainingAction(
-                    action_type="modify_config",
-                    target="learning_rate",
-                    value=0.001,
-                )
-            )
-            env.step(MLTrainingAction(action_type="restart_run"))
-            env.step(
-                MLTrainingAction(
-                    action_type="mark_diagnosed",
-                    diagnosis="lr_too_high",
-                )
-            )
-            return _get_score(env)
-
-        # Check vanishing
-        if any(g.is_vanishing for g in obs.gradient_stats):
-            env.step(
-                MLTrainingAction(
-                    action_type="modify_config",
-                    target="learning_rate",
-                    value=0.01,
-                )
-            )
-            env.step(MLTrainingAction(action_type="restart_run"))
-            env.step(
-                MLTrainingAction(
-                    action_type="mark_diagnosed",
-                    diagnosis="vanishing_gradients",
-                )
-            )
-            return _get_score(env)
-
-    # Step 2: inspect_data_batch
-    obs = env.step(MLTrainingAction(action_type="inspect_data_batch"))
-    if obs.data_batch_stats and obs.data_batch_stats.class_overlap_score > 0.5:
-        env.step(MLTrainingAction(action_type="patch_data_loader"))
-        env.step(MLTrainingAction(action_type="restart_run"))
-        env.step(
-            MLTrainingAction(
-                action_type="mark_diagnosed",
-                diagnosis="data_leakage",
-            )
-        )
-        return _get_score(env)
-
-    # Detect overfitting pattern (used later, after ruling out code bugs)
-    _looks_like_overfitting = False
-    if obs.val_loss_history and obs.training_loss_history and len(obs.val_loss_history) >= 10:
-        early_train = sum(obs.training_loss_history[:5]) / 5
-        late_train = sum(obs.training_loss_history[-5:]) / 5
-        early_val = sum(obs.val_loss_history[:5]) / 5
-        late_val = sum(obs.val_loss_history[-5:]) / 5
-        train_dropped = late_train < early_train * 0.5
-        train_loss_low = late_train < 0.15
-        val_not_improving = late_val >= early_val * 0.95
-        gap_widening = (late_val - late_train) > (early_val - early_train)
-        if (
-            (train_dropped or train_loss_low)
-            and (val_not_improving or gap_widening)
-            and obs.data_batch_stats
-            and obs.data_batch_stats.class_overlap_score < 0.3
-        ):
-            _looks_like_overfitting = True
-
-    # Step 3: inspect_model_modes
-    obs = env.step(MLTrainingAction(action_type="inspect_model_modes"))
-    if obs.model_mode_info:
-        has_eval = any(v == "eval" for v in obs.model_mode_info.values())
-        if has_eval:
-            env.step(MLTrainingAction(action_type="fix_model_mode"))
-            env.step(MLTrainingAction(action_type="restart_run"))
-            env.step(
-                MLTrainingAction(
-                    action_type="mark_diagnosed",
-                    diagnosis="batchnorm_eval_mode",
-                )
-            )
-            return _get_score(env)
-
-    # Step 4: inspect_code (for Task 6)
-    obs = env.step(MLTrainingAction(action_type="inspect_code"))
-    if obs.code_snippet:
-        code = obs.code_snippet.code
-        if "model.eval()" in code and "model.train()" not in code:
-            env.step(
-                MLTrainingAction(
-                    action_type="fix_code",
-                    line=5,
-                    replacement="model.train()",
-                )
-            )
-        elif ".detach()" in code:
-            env.step(
-                MLTrainingAction(
-                    action_type="fix_code",
-                    line=14,
-                    replacement="        loss = criterion(output, batch_y)",
-                )
-            )
-
-        # Try restart if fix was applied
-        session = env._get_session()
-        if session and session.state.fix_action_taken:
-            env.step(MLTrainingAction(action_type="restart_run"))
-
-        env.step(
-            MLTrainingAction(
-                action_type="mark_diagnosed",
-                diagnosis="code_bug",
-            )
-        )
-        return _get_score(env)
-
-    # Step 5: Check for scheduler issue (loss stagnates)
-    if obs.training_loss_history and len(obs.training_loss_history) >= 10:
-        early_loss = sum(obs.training_loss_history[:3]) / 3
-        mid_loss = sum(obs.training_loss_history[5:8]) / 3
-        finite_late = [v for v in obs.training_loss_history[-3:] if v != float("inf")]
-        late_loss = sum(finite_late) / max(len(finite_late), 1)
-        if early_loss > mid_loss and abs(late_loss - mid_loss) < 0.3:
-            env.step(
-                MLTrainingAction(
-                    action_type="modify_config",
-                    target="learning_rate",
-                    value=0.001,
-                )
-            )
-            env.step(MLTrainingAction(action_type="restart_run"))
-            env.step(
-                MLTrainingAction(
-                    action_type="mark_diagnosed",
-                    diagnosis="scheduler_misconfigured",
-                )
-            )
-            return _get_score(env)
-
-    # Overfitting fallback — only if code inspection didn't find a bug
-    if _looks_like_overfitting:
-        env.step(
-            MLTrainingAction(
-                action_type="modify_config",
-                target="weight_decay",
-                value=0.01,
-            )
-        )
-        env.step(MLTrainingAction(action_type="restart_run"))
-        env.step(
-            MLTrainingAction(
-                action_type="mark_diagnosed",
-                diagnosis="overfitting",
-            )
-        )
-        return _get_score(env)
-
-    # Final fallback
-    env.step(
-        MLTrainingAction(
-            action_type="mark_diagnosed",
-            diagnosis="overfitting",
-        )
-    )
-    return _get_score(env)
-
-
-def _get_score(env: MLTrainingEnvironment) -> float:
-    """Extract the grader score from the environment."""
-    session = env._get_session()
-    if session and session.last_score is not None:
-        return session.last_score
-    return 0.0
 
 
 def main() -> None:

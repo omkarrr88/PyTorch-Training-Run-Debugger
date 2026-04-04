@@ -144,6 +144,22 @@ def run_heuristic_episode(task_id: str, seed: int = 42) -> float:
                     replacement="        loss = criterion(output, batch_y)",
                 )
             )
+        elif "inplace=True" in code:
+            obs = env.step(
+                MLTrainingAction(
+                    action_type="fix_code",
+                    line=15,
+                    replacement="        output = F.relu(output)",
+                )
+            )
+        elif "optimizer.zero_grad()" not in code and "optimizer.step()" in code:
+            obs = env.step(
+                MLTrainingAction(
+                    action_type="fix_code",
+                    line=11,
+                    replacement="        optimizer.zero_grad()",
+                )
+            )
 
         if obs.episode_state.fix_action_taken:
             obs = env.step(MLTrainingAction(action_type="restart_run"))
