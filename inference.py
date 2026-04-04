@@ -46,8 +46,10 @@ TASK_NAME = os.environ.get("TASK_NAME", "task_001")
 BENCHMARK = "pytorch-training-debugger"
 
 MAX_STEPS = 25
-MAX_TOTAL_REWARD = 1.0
-SUCCESS_SCORE_THRESHOLD = 0.6
+# Max achievable reward: +0.50 (diagnosis) +0.40 (convergence) +5*0.05 (investigations)
+# minus step penalties. Use 1.15 as the theoretical ceiling for normalization.
+MAX_TOTAL_REWARD = 1.15
+SUCCESS_SCORE_THRESHOLD = 0.5
 TEMPERATURE = 0.0
 MAX_TOKENS = 300
 FALLBACK_ACTION = '{"action_type": "inspect_gradients"}'
