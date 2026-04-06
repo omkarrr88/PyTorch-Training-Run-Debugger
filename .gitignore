@@ -13,16 +13,7 @@ validation/reports/*.png
 .mypy_cache/
 .ruff_cache/
 .coverage
-.claude/
-CLAUDE.md
 .hf-space/
 .python-version
 deploy-hf.sh
 deploy.sh
-AUDIT_REPORT.md
-baseline_inference.py
-run_all_baselines.py
-docs/PAPER.md
-docs/PRD.md
-docs/ROADMAP.md
-docs/PROJECT_GUIDE.md

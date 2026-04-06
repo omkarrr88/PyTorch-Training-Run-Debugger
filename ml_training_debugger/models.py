@@ -113,7 +113,6 @@ class EpisodeState(BaseModel):
 
         Rules from spec Section 10 — Dynamic available_actions:
         - restart_run: only after fix_action_taken
-        - rollback_checkpoint: only after restart_after_fix
         - fix_code: only after code_inspected
         - mark_diagnosed: disappears after diagnosis_submitted
         """
@@ -133,8 +132,6 @@ class EpisodeState(BaseModel):
             actions.append("fix_code")
         if self.fix_action_taken:
             actions.append("restart_run")
-        if self.restart_after_fix:
-            actions.append("rollback_checkpoint")
         if not self.diagnosis_submitted:
             actions.append("mark_diagnosed")
         return actions
@@ -154,7 +151,6 @@ ALL_ACTION_TYPES: set[str] = {
     "fix_code",
     "restart_run",
     "mark_diagnosed",
-    "rollback_checkpoint",
 }
 
 

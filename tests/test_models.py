@@ -93,8 +93,6 @@ class TestEpisodeState:
         assert "mark_diagnosed" in actions
         assert "fix_code" not in actions
         assert "restart_run" not in actions
-        assert "rollback_checkpoint" not in actions
-
     def test_fix_code_available_after_code_inspected(self):
         state = EpisodeState(code_inspected=True)
         actions = state.compute_available_actions()
@@ -104,11 +102,6 @@ class TestEpisodeState:
         state = EpisodeState(fix_action_taken=True)
         actions = state.compute_available_actions()
         assert "restart_run" in actions
-
-    def test_rollback_available_after_restart(self):
-        state = EpisodeState(restart_after_fix=True)
-        actions = state.compute_available_actions()
-        assert "rollback_checkpoint" in actions
 
     def test_mark_diagnosed_disappears_after_submission(self):
         state = EpisodeState(diagnosis_submitted=True)

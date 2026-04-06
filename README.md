@@ -29,7 +29,7 @@ The agent starts with limited information (loss curves, config, error log) and m
 
 ### Real PyTorch Model Internals
 
-Every gradient comes from real `torch.autograd`. Every weight stat comes from real `model.state_dict()`. The environment instantiates actual `torch.nn.Module` models (SimpleCNN ~50K params, SimpleMLP ~20K params), runs 20 real forward+backward epochs per reset, and extracts real tensor statistics. Not synthetic formulas — real PyTorch computation, cached for instant replay.
+Every gradient comes from real `torch.autograd`. Every weight stat comes from real `model.state_dict()`. The environment instantiates actual `torch.nn.Module` models (SimpleCNN ~67K params, SimpleMLP ~412K params), runs 20 real forward+backward epochs per reset, and extracts real tensor statistics. Not synthetic formulas — real PyTorch computation, cached for instant replay.
 
 ### Context-Gated Reward Shaping
 
@@ -88,7 +88,7 @@ Fields like `gradient_stats`, `data_batch_stats`, `model_mode_info`, and `code_s
 
 ## Action Space
 
-14 action types in 3 categories:
+13 action types in 3 categories:
 
 **Investigation** — reveal hidden observation fields:
 - `inspect_gradients` — per-layer gradient norms, is_exploding/is_vanishing flags
@@ -107,7 +107,6 @@ Fields like `gradient_stats`, `data_batch_stats`, `model_mode_info`, and `code_s
 
 **Terminal** — end the episode:
 - `restart_run` — restart training (only available after a fix)
-- `rollback_checkpoint` — rollback to pre-fix state (only available after restart)
 - `mark_diagnosed` — submit diagnosis from 7 possible root causes
 
 Actions are dynamically available based on episode state: `fix_code` requires prior code inspection, `restart_run` requires a fix, `mark_diagnosed` disappears after submission.
@@ -174,14 +173,8 @@ An agent that chases the gradient spike red herring loses 0.20 points. An agent 
 # Heuristic (deterministic, no API key, bit-exact reproducible)
 python3 baseline_heuristic.py
 
-# LLM (multi-provider support)
-python3 baseline_inference.py                       # Groq — Llama 3.3 70B (free)
-python3 baseline_inference.py --provider cerebras    # Cerebras — Llama 3.1 8B (free)
-python3 baseline_inference.py --provider gemini      # Google Gemini 2.0 Flash
-python3 baseline_inference.py --provider openai      # OpenAI GPT-4o
-
-# Run all baselines with comparison table
-python3 run_all_baselines.py
+# LLM (hackathon evaluator format — uses OpenAI client)
+API_BASE_URL=https://api.openai.com/v1 MODEL_NAME=gpt-4o OPENAI_API_KEY=sk-... python3 inference.py
 ```
 
 ## API
@@ -299,7 +292,7 @@ server/
 
 tests/                   — 246 tests, 96% coverage
 baseline_heuristic.py    — Rule-based agent (deterministic, no API key)
-baseline_inference.py    — LLM agent (Groq/Cerebras/Gemini/OpenAI)
+inference.py             — LLM agent (OpenAI client, hackathon format)
 ```
 
 **Key design decisions:**

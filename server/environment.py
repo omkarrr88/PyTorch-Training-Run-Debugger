@@ -467,9 +467,6 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
             state.diagnosis_submitted = True
             session.done = True
 
-        elif at == "rollback_checkpoint":
-            pass  # No-op for now
-
         return is_correct_fix, convergence
 
     def _check_convergence(self, session: SessionData) -> bool:
@@ -516,11 +513,21 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
         session = self._get_session()
         if session is None:
             return {"status": "no_active_episode"}
+        st = session.state
         return {
             "status": "active",
             "task_id": session.scenario.task_id,
-            "step_count": session.state.step_count,
+            "step_count": st.step_count,
             "done": session.done,
+            "gradients_inspected": st.gradients_inspected,
+            "data_inspected": st.data_inspected,
+            "model_modes_inspected": st.model_modes_inspected,
+            "model_weights_inspected": st.model_weights_inspected,
+            "code_inspected": st.code_inspected,
+            "fix_action_taken": st.fix_action_taken,
+            "restart_after_fix": st.restart_after_fix,
+            "diagnosis_submitted": st.diagnosis_submitted,
+            "available_actions": st.compute_available_actions(),
         }
 
     def get_last_completed(self, session_id: str | None = None) -> dict | None:
