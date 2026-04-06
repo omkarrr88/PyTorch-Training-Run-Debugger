@@ -3,8 +3,6 @@
 
 Requires GEMINI_API_KEY environment variable (or pass via --api-key).
 Uses temperature=0.0 for near-deterministic behavior.
-Spec reference: Section 17.
-
 Usage:
     GEMINI_API_KEY=... python baseline_inference.py
     python baseline_inference.py --api-key YOUR_KEY

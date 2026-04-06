@@ -8,7 +8,6 @@ All curves come from run_real_training() in pytorch_engine.py:
   - 20 epochs, cached per (task_id, seed, model_type)
 
 Zero numpy. Zero parametric formulas. Zero synthetic curves.
-Spec reference: Section 6.
 """
 
 from __future__ import annotations

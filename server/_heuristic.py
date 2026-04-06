@@ -1,7 +1,6 @@
 """Rule-based heuristic baseline for the /baseline endpoint.
 
-Extracted from app.py to keep route definitions under 400 lines.
-Decision tree per spec Section 17.
+Extracted from app.py to keep route definitions clean.
 """
 
 from __future__ import annotations

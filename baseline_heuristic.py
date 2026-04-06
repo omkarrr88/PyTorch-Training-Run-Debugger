@@ -2,7 +2,6 @@
 """Rule-based heuristic baseline agent.
 
 Deterministic decision tree — no API key required. Bit-exact reproducible.
-Spec reference: Section 17.
 
 Usage:
     python baseline_heuristic.py [--url http://localhost:7860]

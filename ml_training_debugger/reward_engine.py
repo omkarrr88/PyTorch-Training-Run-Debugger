@@ -1,17 +1,16 @@
-"""Reward function — all 7 components per spec Section 12.
+"""Reward function — 7 components, separate from graders.
 
-Separate from graders.py. Returns a float per step for RL training signal.
-Hard cap at [-1.0, 1.0].
+Returns a float per step for RL training signal. Hard cap at [-1.0, 1.0].
 """
 
 from __future__ import annotations
 
-import torch  # noqa: F401 — PyTorch-native project
+import torch  # noqa: F401
 
 from ml_training_debugger.models import EpisodeState, MLTrainingAction
 from ml_training_debugger.scenarios import ScenarioParams
 
-# Reward constants — do not change (CLAUDE.md)
+# Reward constants
 STEP_PENALTY = -0.01
 INVESTIGATION_BONUS = 0.05
 CONTEXT_GATED_PENALTY = -0.20
@@ -63,40 +62,38 @@ def compute_reward(
     """
     reward = 0.0
 
-    # Component 1: Flat step penalty (unconditional)
+    # Step penalty (unconditional)
     reward += STEP_PENALTY
 
-    # Component 4: Invalid action penalty
     if not is_valid_action:
         reward += INVALID_ACTION_PENALTY
         return max(-1.0, min(1.0, reward))
 
     action_type = action.action_type
 
-    # Component 2: Investigation bonus (first-time only)
+    # Investigation bonus — first-time only
     if action_type in INVESTIGATION_ACTIONS:
         state_field = _INSPECTION_STATE_MAP.get(action_type)
         if state_field and not getattr(state, state_field):
             reward += INVESTIGATION_BONUS
 
-    # Component 3: Context-gated red herring penalty
-    # Fires ONLY when gradients_inspected=True AND gradients_were_normal=True
+    # Context-gated penalty: adding gradient clipping after seeing normal gradients
     if action_type == "add_callback":
         if state.gradients_inspected and state.gradients_were_normal:
             reward += CONTEXT_GATED_PENALTY
 
-    # Component 7: Wrong code fix penalty
+    # Wrong code fix
     if action_type == "fix_code" and is_correct_fix is False:
         reward += WRONG_CODE_FIX_PENALTY
 
-    # Component 5: Diagnosis outcome
+    # Diagnosis
     if action_type == "mark_diagnosed":
         if action.diagnosis == scenario.root_cause.value:
             reward += CORRECT_DIAGNOSIS_REWARD
         else:
             reward += WRONG_DIAGNOSIS_PENALTY
 
-    # Component 6: Terminal convergence reward
+    # Convergence after fix+restart
     if action_type == "restart_run":
         if state.fix_action_taken and convergence_confirmed:
             reward += TERMINAL_CONVERGENCE_REWARD

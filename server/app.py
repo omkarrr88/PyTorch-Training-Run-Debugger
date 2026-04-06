@@ -1,7 +1,4 @@
-"""FastAPI app — openenv create_app() + custom hackathon routes.
-
-Spec reference: Sections 9, 14, 15.
-"""
+"""FastAPI app — openenv create_app() + custom routes."""
 
 from __future__ import annotations
 
@@ -20,7 +17,7 @@ from server._baseline_results import get_last_grader_result
 from server.environment import MLTrainingEnvironment
 
 
-# Structured JSON logging (Spec S15)
+# Structured JSON logging
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
@@ -47,7 +44,7 @@ logging.root.handlers = [handler]
 logging.root.setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
-# All 7 tasks (Spec S11 + Task 7 extension)
+# All 7 tasks
 ALL_TASKS = [
     {"id": "task_001", "difficulty": "easy", "max_steps": 20},
     {"id": "task_002", "difficulty": "easy", "max_steps": 20},
@@ -90,7 +87,7 @@ def health_check() -> dict:
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def get_dashboard() -> str:
-    """Serve live diagnostic dashboard. Spec Section 19."""
+    """Serve live diagnostic dashboard."""
     import pathlib
 
     html_path = pathlib.Path(__file__).parent / "dashboard.html"
@@ -99,7 +96,7 @@ def get_dashboard() -> str:
 
 @app.get("/validation-report")
 def get_validation_report() -> dict:
-    """Serve pre-computed simulation fidelity report. Spec Section 18."""
+    """Serve pre-computed simulation fidelity report."""
     import pathlib
 
     report_path = (

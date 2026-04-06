@@ -1,7 +1,6 @@
 """ScenarioParams and scenario sampling.
 
 Internal scenario configuration — not exposed to the agent.
-Spec reference: Sections 6, 10, 11.
 """
 
 from __future__ import annotations

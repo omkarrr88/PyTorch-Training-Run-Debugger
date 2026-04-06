@@ -1,6 +1,6 @@
 {
   "methodology": "Real PyTorch 20-epoch mini-training with fault injection",
-  "torch_version": "2.11.0+cpu",
+  "torch_version": "2.5.1+cpu",
   "models": [
     "SimpleCNN (~50K params)",
     "SimpleMLP (~20K params)"

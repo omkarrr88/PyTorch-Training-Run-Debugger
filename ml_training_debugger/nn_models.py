@@ -1,7 +1,6 @@
 """PyTorch model definitions for the training debugger.
 
 SimpleCNN (~50K params) and SimpleMLP (~20K params).
-Spec reference: Section 9 — PyTorch Model Pool.
 """
 
 from __future__ import annotations

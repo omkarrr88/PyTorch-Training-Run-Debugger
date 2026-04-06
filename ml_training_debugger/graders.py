@@ -1,12 +1,12 @@
 """Per-task grader functions — returns normalized 0.0-1.0 score at episode end.
 
 Separate from reward_engine.py. Evaluates EpisodeState holistically.
-NOT a sum of step rewards. Spec reference: Section 11 grader breakdowns.
+NOT a sum of step rewards.
 """
 
 from __future__ import annotations
 
-import torch  # noqa: F401 — PyTorch-native project
+import torch  # noqa: F401
 
 from ml_training_debugger.models import EpisodeState
 from ml_training_debugger.scenarios import ScenarioParams
@@ -47,7 +47,7 @@ def _submitted_diagnosis(state: EpisodeState) -> str | None:
 
 
 def grade_task_001(state: EpisodeState, scenario: ScenarioParams) -> float:
-    """Grade Task 1 — Exploding Gradients (easy). Spec Section 11."""
+    """Grade Task 1 — Exploding Gradients (easy)."""
     score = 0.0
 
     # +0.05 for inspect_gradients
@@ -70,7 +70,7 @@ def grade_task_001(state: EpisodeState, scenario: ScenarioParams) -> float:
 
 
 def grade_task_002(state: EpisodeState, scenario: ScenarioParams) -> float:
-    """Grade Task 2 — Vanishing Gradients (easy). Spec Section 11."""
+    """Grade Task 2 — Vanishing Gradients (easy)."""
     score = 0.0
 
     if state.gradients_inspected:
@@ -86,7 +86,7 @@ def grade_task_002(state: EpisodeState, scenario: ScenarioParams) -> float:
 
 
 def grade_task_003(state: EpisodeState, scenario: ScenarioParams) -> float:
-    """Grade Task 3 — Silent Data Leakage (medium). Spec Section 11."""
+    """Grade Task 3 — Silent Data Leakage (medium)."""
     score = 0.0
 
     # +0.05 for inspect_data_batch
@@ -109,7 +109,7 @@ def grade_task_003(state: EpisodeState, scenario: ScenarioParams) -> float:
 
 
 def grade_task_004(state: EpisodeState, scenario: ScenarioParams) -> float:
-    """Grade Task 4 — Overfitting (medium). Spec Section 11."""
+    """Grade Task 4 — Overfitting (medium)."""
     score = 0.0
 
     if state.data_inspected:
@@ -125,7 +125,7 @@ def grade_task_004(state: EpisodeState, scenario: ScenarioParams) -> float:
 
 
 def grade_task_005(state: EpisodeState, scenario: ScenarioParams) -> float:
-    """Grade Task 5 — BatchNorm Eval Mode (hard). Spec Section 11.
+    """Grade Task 5 — BatchNorm Eval Mode (hard).
 
     Hard task requires thorough investigation for full credit.
     Context-gated penalty: -0.20 if add_callback after gradients_were_normal.
@@ -179,7 +179,7 @@ def grade_task_005(state: EpisodeState, scenario: ScenarioParams) -> float:
 
 
 def grade_task_006(state: EpisodeState, scenario: ScenarioParams) -> float:
-    """Grade Task 6 — PyTorch Code Bug (hard). Spec Section 11.
+    """Grade Task 6 — PyTorch Code Bug (hard).
 
     Diagnosis must ALWAYS be 'code_bug' regardless of bug variant.
     Hard task rewards thorough investigation before fixing.
@@ -221,7 +221,7 @@ def grade_task_006(state: EpisodeState, scenario: ScenarioParams) -> float:
 
 
 def grade_task_007(state: EpisodeState, scenario: ScenarioParams) -> float:
-    """Grade Task 7 — LR Scheduler Misconfigured (hard). Spec extension.
+    """Grade Task 7 — LR Scheduler Misconfigured (hard).
 
     Requires thorough investigation: agents must inspect weights to rule out
     weight-related issues before concluding scheduler is the root cause.

@@ -1,9 +1,7 @@
 """MLTrainingEnvironment — extends openenv Environment.
 
-Full implementation of reset() and step() with session isolation,
-progressive information reveal, and comprehensive error handling.
-step() NEVER raises an unhandled exception.
-Spec reference: Sections 9, 13, 16.
+Session isolation, progressive information reveal, error handling.
+step() never raises an unhandled exception.
 """
 
 from __future__ import annotations
@@ -75,10 +73,7 @@ class SessionData:
 
 
 class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation, dict]):
-    """OpenEnv environment for PyTorch training run debugging.
-
-    Spec Section 9 — Architecture.
-    """
+    """OpenEnv environment for PyTorch training run debugging."""
 
     SUPPORTS_CONCURRENT_SESSIONS = True
 
@@ -148,7 +143,7 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
         episode_id: Optional[str] = None,
         **kwargs: Any,
     ) -> MLTrainingObservation:
-        """Reset environment for a new episode. Spec Section 13."""
+        """Reset environment for a new episode."""
         # Determine task_id — passed via kwargs or defaults to task_001
         task_id = kwargs.get("task_id", "task_001")
 
@@ -239,7 +234,7 @@ class MLTrainingEnvironment(Environment[MLTrainingAction, MLTrainingObservation,
         timeout_s: Optional[float] = None,
         **kwargs: Any,
     ) -> MLTrainingObservation:
-        """Process one agent action. NEVER raises. Spec Sections 13, 16."""
+        """Process one agent action. Never raises."""
         session = self._get_session()
 
         # No active episode

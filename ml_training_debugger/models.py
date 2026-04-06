@@ -1,7 +1,6 @@
 """All Pydantic models, enums, and typed data structures.
 
 No business logic. Pure data definitions.
-Spec reference: Section 10 — Data Models.
 """
 
 from __future__ import annotations
@@ -9,13 +8,13 @@ from __future__ import annotations
 import enum
 from typing import Optional, Union
 
-import torch  # noqa: F401 — PyTorch-native project, required import
+import torch  # noqa: F401
 from openenv.core.env_server.types import Action, Observation
 from pydantic import BaseModel, Field
 
 
 class RootCauseDiagnosis(str, enum.Enum):
-    """Closed enumeration of ML failure root causes. Spec Section 10."""
+    """Closed enumeration of ML failure root causes."""
 
     LR_TOO_HIGH = "lr_too_high"
     VANISHING_GRADIENTS = "vanishing_gradients"
@@ -30,7 +29,7 @@ VALID_DIAGNOSES: set[str] = {d.value for d in RootCauseDiagnosis}
 
 
 class TrainingConfig(BaseModel):
-    """Typed hyperparameter configuration. Spec Section 10."""
+    """Typed hyperparameter configuration."""
 
     learning_rate: float = 0.001
     weight_decay: float = 0.0001
@@ -46,7 +45,7 @@ VALID_CONFIG_KEYS: set[str] = set(TrainingConfig.model_fields.keys())
 
 
 class GradientStats(BaseModel):
-    """Per-layer gradient information from real torch.autograd. Spec Section 10."""
+    """Per-layer gradient information from real torch.autograd."""
 
     layer_name: str
     norm_history: list[float]
@@ -57,7 +56,7 @@ class GradientStats(BaseModel):
 
 
 class ModelWeightStats(BaseModel):
-    """Per-layer weight statistics from real state_dict(). Spec Section 10."""
+    """Per-layer weight statistics from real state_dict()."""
 
     layer_name: str
     weight_norm: float
@@ -71,7 +70,7 @@ class ModelWeightStats(BaseModel):
 
 
 class DataBatchStats(BaseModel):
-    """Data batch inspection results. Spec Section 10."""
+    """Data batch inspection results."""
 
     label_distribution: dict[int, float]
     feature_mean: float
@@ -84,7 +83,7 @@ class DataBatchStats(BaseModel):
 
 
 class CodeSnippet(BaseModel):
-    """PyTorch code for Task 6 inspection. Spec Section 10."""
+    """PyTorch code for Task 6 inspection."""
 
     code: str
     filename: str = "train.py"
@@ -94,7 +93,7 @@ class CodeSnippet(BaseModel):
 
 
 class EpisodeState(BaseModel):
-    """Tracks agent history within an episode. Spec Section 10."""
+    """Tracks agent history within an episode."""
 
     step_count: int = 0
     gradients_inspected: bool = False
@@ -109,13 +108,7 @@ class EpisodeState(BaseModel):
     actions_taken: list[str] = Field(default_factory=list)
 
     def compute_available_actions(self) -> list[str]:
-        """Dynamically compute available actions based on current state.
-
-        Rules from spec Section 10 — Dynamic available_actions:
-        - restart_run: only after fix_action_taken
-        - fix_code: only after code_inspected
-        - mark_diagnosed: disappears after diagnosis_submitted
-        """
+        """Dynamically compute available actions based on current state."""
         actions: list[str] = [
             "inspect_gradients",
             "inspect_data_batch",
@@ -155,7 +148,7 @@ ALL_ACTION_TYPES: set[str] = {
 
 
 class MLTrainingAction(Action):
-    """What the agent can do — extends openenv Action. Spec Section 10."""
+    """What the agent can do — extends openenv Action."""
 
     action_type: str
     target: Optional[str] = None
@@ -169,7 +162,6 @@ class MLTrainingObservation(Observation):
     """Full observation — extends openenv Observation.
 
     Observation base has built-in: done (bool), reward (float|None), metadata (dict).
-    Spec Section 10.
     """
 
     run_id: str = ""

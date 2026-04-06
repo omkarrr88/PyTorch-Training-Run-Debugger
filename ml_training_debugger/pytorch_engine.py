@@ -2,7 +2,6 @@
 
 Real torch.nn.Module models, real torch.autograd gradients,
 real state_dict() weight snapshots. Zero numpy.
-Spec reference: Sections 6, 9.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """PyTorch code snippet templates for Task 6 code-level debugging.
 
 Each template is a real, syntactically valid Python/PyTorch training script
-with one injected bug. Spec reference: Section 11 (Task 6), Section 22.
+with one injected bug.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import io
 import tokenize
 from typing import Optional
 
-import torch  # noqa: F401 — PyTorch-native project
+import torch  # noqa: F401
 
 # Bug variant templates: (buggy_code, correct_line_num, correct_replacement)
 _TEMPLATES: dict[str, tuple[str, int, str]] = {
