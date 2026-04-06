@@ -1,3 +1,16 @@
+---
+title: PyTorch Training Run Debugger
+emoji: 🔧
+colorFrom: purple
+colorTo: blue
+sdk: docker
+app_port: 7860
+tags:
+  - openenv
+  - pytorch
+  - reinforcement-learning
+---
+
 # PyTorch Training Run Debugger
 
 **OpenEnv RL Environment** | Meta PyTorch OpenEnv Hackathon x Scaler School of Technology
