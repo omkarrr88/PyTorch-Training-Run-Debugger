@@ -27,11 +27,11 @@ def client():
 
 
 class TestHealthEndpoint:
-    def test_returns_ready(self, client):
+    def test_returns_healthy(self, client):
         resp = client.get("/health")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "ready"
+        assert data["status"] == "healthy"
         assert data["tasks"] == 7
 
     def test_task_count_matches_all_tasks(self, client):

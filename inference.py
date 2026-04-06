@@ -24,12 +24,12 @@ import asyncio
 import json
 import os
 import sys
-from typing import Optional
+from typing import List, Optional
 
 try:
     from openai import OpenAI
 except ImportError:
-    print("Error: openai package not installed. Run: pip install openai", file=sys.stderr)
+    print("Error: openai package not installed. Run: pip install openai", flush=True)
     sys.exit(1)
 
 from openenv.core import GenericAction, GenericEnvClient
@@ -74,7 +74,7 @@ def log_step(
     )
 
 
-def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> None:
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(
         f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}",
@@ -155,7 +155,7 @@ def get_model_message(
     step: int,
     last_obs_summary: dict,
     last_reward: float,
-    history: list[str],
+    history: List[str],
 ) -> str:
     """Get next action from the LLM."""
     history_ctx = "\n".join(history[-5:]) if history else "No previous steps."
@@ -179,7 +179,7 @@ def get_model_message(
         text = (completion.choices[0].message.content or "").strip()
         return text if text else FALLBACK_ACTION
     except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", file=sys.stderr)
+        print(f"[DEBUG] Model request failed: {exc}", flush=True)
         return FALLBACK_ACTION
 
 
@@ -198,11 +198,11 @@ def parse_action(raw: str) -> str:
 async def main() -> None:
     if not API_KEY:
         print(
-            "Error: OPENAI_API_KEY or HF_TOKEN required.", file=sys.stderr
+            "Error: OPENAI_API_KEY or HF_TOKEN required.", flush=True
         )
         sys.exit(1)
 
-    llm = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     # Connect to environment via standard OpenEnv client
     if IMAGE_NAME:
@@ -211,8 +211,8 @@ async def main() -> None:
         env = GenericEnvClient(base_url=ENV_URL, message_timeout_s=120.0)
         await env.connect()
 
-    history: list[str] = []
-    rewards: list[float] = []
+    history: List[str] = []
+    rewards: List[float] = []
     steps_taken = 0
     score = 0.0
     success = False
@@ -220,9 +220,8 @@ async def main() -> None:
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        # Reset environment for the selected task
         result = await env.reset(task_id=TASK_NAME, seed=42)
-        obs = result.observation  # dict
+        obs = result.observation
         last_reward = 0.0
 
         for step in range(1, MAX_STEPS + 1):
@@ -230,10 +229,9 @@ async def main() -> None:
                 break
 
             obs_summary = _build_obs_summary(obs)
-            raw = get_model_message(llm, step, obs_summary, last_reward, history)
+            raw = get_model_message(client, step, obs_summary, last_reward, history)
             action_str = parse_action(raw)
 
-            # Step via standard OpenEnv client API
             action = GenericAction(json.loads(action_str))
             result = await env.step(action)
             obs = result.observation
@@ -250,30 +248,23 @@ async def main() -> None:
             steps_taken = step
             last_reward = reward
 
-            log_step(
-                step=step,
-                action=action_str,
-                reward=reward,
-                done=done,
-                error=error,
-            )
-            history.append(f"Step {step}: {action_str} -> reward {reward:+.2f}")
+            log_step(step=step, action=action_str, reward=reward, done=done, error=error)
+
+            history.append(f"Step {step}: {action_str!r} -> reward {reward:+.2f}")
 
             if done:
                 break
 
         score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD > 0 else 0.0
-        score = min(max(score, 0.0), 1.0)
+        score = min(max(score, 0.0), 1.0)  # clamp to [0, 1]
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
         try:
             await env.close()
         except Exception as e:
-            print(f"[DEBUG] env.close() error: {e}", file=sys.stderr)
-        log_end(
-            success=success, steps=steps_taken, score=score, rewards=rewards
-        )
+            print(f"[DEBUG] env.close() error (container cleanup): {e}", flush=True)
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
 if __name__ == "__main__":

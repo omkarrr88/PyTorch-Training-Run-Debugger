@@ -85,7 +85,7 @@ def root() -> RedirectResponse:
 @app.get("/health")
 def health_check() -> dict:
     """Health check — required by hackathon auto-validator."""
-    return {"status": "ready", "tasks": len(ALL_TASKS)}
+    return {"status": "healthy", "tasks": len(ALL_TASKS)}
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

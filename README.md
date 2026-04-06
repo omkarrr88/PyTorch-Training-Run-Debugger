@@ -183,7 +183,7 @@ API_BASE_URL=https://api.openai.com/v1 MODEL_NAME=gpt-4o OPENAI_API_KEY=sk-... p
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | `{"status": "ready", "tasks": 7}` |
+| `/health` | GET | `{"status": "healthy", "tasks": 7}` |
 | `/tasks` | GET | Task list with IDs, difficulties, action schema |
 | `/grader` | POST | Score for last completed episode |
 | `/baseline` | POST | Run heuristic on all tasks, return scores |

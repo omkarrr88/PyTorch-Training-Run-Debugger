@@ -4,7 +4,7 @@ version = "1.1.0"
 description = "OpenEnv RL environment for PyTorch training failure debugging"
 requires-python = ">=3.12"
 dependencies = [
-    "torch",
+    "torch>=2.5.1",
     "openenv-core",
     "pydantic>=2.0",
     "fastapi",
