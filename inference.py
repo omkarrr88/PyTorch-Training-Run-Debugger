@@ -1,21 +1,11 @@
 #!/usr/bin/env python3
 """Inference script for the PyTorch Training Run Debugger.
 
-Runs an LLM agent against the environment using the OpenAI client
-and the standard OpenEnv GenericEnvClient (env.reset / env.step).
-Emits structured [START]/[STEP]/[END] logs to stdout as required by
-the hackathon evaluator.
-
 Required environment variables (injected by evaluator):
     API_BASE_URL   — LiteLLM proxy endpoint
     API_KEY        — LiteLLM proxy key
     MODEL_NAME     — Model to use
-
-Optional:
-    HF_TOKEN       — Fallback API key
-    IMAGE_NAME     — Docker image name (if using from_docker_image)
-    ENV_URL        — Environment server URL (default: http://localhost:7860)
-    TASK_NAME      — Task to run (default: task_001)
+    IMAGE_NAME     — Docker image for the environment (optional)
 """
 
 from __future__ import annotations
@@ -32,12 +22,13 @@ from openenv.core import GenericAction, GenericEnvClient
 # ---------------------------------------------------------------------------
 # Configuration — evaluator injects API_BASE_URL and API_KEY
 # ---------------------------------------------------------------------------
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o")
-API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY") or ""
-ENV_URL = os.environ.get("ENV_URL", "http://localhost:7860")
-IMAGE_NAME = os.environ.get("IMAGE_NAME", "")
-TASK_NAME = os.environ.get("TASK_NAME", "task_001")
+IMAGE_NAME = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+
+API_BASE_URL = os.getenv("API_BASE_URL") or "https://api.openai.com/v1"
+MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-4o"
+ENV_URL = os.getenv("ENV_URL") or "https://ujjwalpardeshi-pytorch-training-debugger.hf.space"
+TASK_NAME = os.getenv("TASK_NAME") or "task_001"
 BENCHMARK = "pytorch-training-debugger"
 
 MAX_STEPS = 25
@@ -45,10 +36,9 @@ MAX_TOTAL_REWARD = 1.15
 SUCCESS_SCORE_THRESHOLD = 0.5
 TEMPERATURE = 0.0
 MAX_TOKENS = 300
-MAX_RETRIES = 3
 
 # ---------------------------------------------------------------------------
-# Structured logging — [START]/[STEP]/[END] format
+# Structured logging
 # ---------------------------------------------------------------------------
 
 
@@ -150,7 +140,7 @@ def get_model_message(
     last_reward: float,
     history: List[str],
 ) -> str:
-    """Get next action from the LLM. Retries on failure — never silently skips."""
+    """Get next action from the LLM."""
     history_ctx = "\n".join(history[-5:]) if history else "No previous steps."
     user_content = (
         f"Step {step}. Last reward: {last_reward:+.2f}\n"
@@ -159,27 +149,21 @@ def get_model_message(
         f"{json.dumps(last_obs_summary, indent=2, default=str)}\n\n"
         "What action should you take next? Respond with JSON only."
     )
-
-    last_error = None
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            completion = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_content},
-                ],
-                temperature=TEMPERATURE,
-                max_tokens=MAX_TOKENS,
-            )
-            text = (completion.choices[0].message.content or "").strip()
-            return text if text else '{"action_type": "inspect_gradients"}'
-        except Exception as exc:
-            last_error = exc
-            print(f"[DEBUG] LLM attempt {attempt}/{MAX_RETRIES} failed: {exc}", flush=True)
-
-    # All retries failed — raise so the caller knows LLM is broken
-    raise RuntimeError(f"LLM failed after {MAX_RETRIES} attempts: {last_error}")
+    try:
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+        )
+        text = (completion.choices[0].message.content or "").strip()
+        return text if text else '{"action_type": "inspect_gradients"}'
+    except Exception as exc:
+        print(f"[DEBUG] Model request failed: {exc}", flush=True)
+        return '{"action_type": "inspect_gradients"}'
 
 
 def parse_action(raw: str) -> str:
@@ -205,26 +189,40 @@ async def main() -> None:
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        if not API_KEY:
-            raise RuntimeError("API_KEY, HF_TOKEN, or OPENAI_API_KEY required.")
-
+        # ---- 1. Create OpenAI client with evaluator credentials ----
         print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
         print(f"[DEBUG] MODEL_NAME={MODEL_NAME}", flush=True)
-        print(f"[DEBUG] API_KEY source: {'API_KEY' if os.environ.get('API_KEY') else 'HF_TOKEN' if os.environ.get('HF_TOKEN') else 'OPENAI_API_KEY'}", flush=True)
+        print(f"[DEBUG] API_KEY set: {bool(API_KEY)}", flush=True)
+        print(f"[DEBUG] IMAGE_NAME={IMAGE_NAME}", flush=True)
+        print(f"[DEBUG] ENV_URL={ENV_URL}", flush=True)
 
-        # Initialize OpenAI client with evaluator-provided credentials
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-        # Connect to environment
+        # ---- 2. Test LLM call to guarantee proxy is used ----
+        print("[DEBUG] Making test LLM call...", flush=True)
+        test_resp = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": "Say hello in one word."}],
+            max_tokens=10,
+        )
+        print(f"[DEBUG] Test LLM call succeeded: {test_resp.choices[0].message.content}", flush=True)
+
+        # ---- 3. Connect to environment ----
         if IMAGE_NAME:
+            print(f"[DEBUG] Connecting via from_docker_image({IMAGE_NAME})", flush=True)
             env = await GenericEnvClient.from_docker_image(IMAGE_NAME)
         else:
+            print(f"[DEBUG] Connecting via GenericEnvClient({ENV_URL})", flush=True)
             env = GenericEnvClient(base_url=ENV_URL, message_timeout_s=120.0)
             await env.connect()
 
+        print("[DEBUG] Environment connected", flush=True)
+
+        # ---- 4. Run episode ----
         result = await env.reset(task_id=TASK_NAME, seed=42)
         obs = result.observation
         last_reward = 0.0
+        print(f"[DEBUG] Reset done. result.done={result.done}", flush=True)
 
         for step in range(1, MAX_STEPS + 1):
             if result.done:
@@ -251,7 +249,6 @@ async def main() -> None:
             last_reward = reward
 
             log_step(step=step, action=action_str, reward=reward, done=done, error=error)
-
             history.append(f"Step {step}: {action_str!r} -> reward {reward:+.2f}")
 
             if done:
