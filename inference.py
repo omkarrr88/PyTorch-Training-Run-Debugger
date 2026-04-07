@@ -254,7 +254,7 @@ async def main() -> None:
                 break
 
         score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD > 0 else 0.0
-        score = min(max(score, 0.0), 1.0)  # clamp to [0, 1]
+        score = min(max(score, 0.01), 0.99)  # clamp to (0, 1) exclusive
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as exc:

@@ -277,8 +277,10 @@ GRADERS = {
 
 
 def grade_episode(task_id: str, state: EpisodeState, scenario: ScenarioParams) -> float:
-    """Grade a completed episode. Returns 0.0-1.0."""
+    """Grade a completed episode. Returns score in (0.0, 1.0) exclusive."""
     grader = GRADERS.get(task_id)
     if grader is None:
-        return 0.0
-    return grader(state, scenario)
+        return 0.01
+    score = grader(state, scenario)
+    # Clamp to strictly between 0 and 1 (evaluator rejects exact 0.0 and 1.0)
+    return max(0.01, min(0.99, score))
