@@ -39,7 +39,7 @@ from openenv.core import GenericAction, GenericEnvClient
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o")
-API_KEY = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY", "")
+API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY", "")
 ENV_URL = os.environ.get("ENV_URL", "http://localhost:7860")
 IMAGE_NAME = os.environ.get("IMAGE_NAME", "")
 TASK_NAME = os.environ.get("TASK_NAME", "task_001")
