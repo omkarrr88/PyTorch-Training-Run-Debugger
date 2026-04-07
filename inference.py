@@ -6,16 +6,16 @@ and the standard OpenEnv GenericEnvClient (env.reset / env.step).
 Emits structured [START]/[STEP]/[END] logs to stdout as required by
 the hackathon evaluator.
 
-Required environment variables (set by hackathon evaluator):
-    API_BASE_URL  — OpenAI-compatible API endpoint
-    MODEL_NAME    — Model to use (e.g., "gpt-4o", "llama-3.3-70b")
-    HF_TOKEN      — Hugging Face token (used as API key if OPENAI_API_KEY not set)
+Required environment variables (injected by evaluator):
+    API_BASE_URL   — LiteLLM proxy endpoint
+    API_KEY        — LiteLLM proxy key
+    MODEL_NAME     — Model to use
 
 Optional:
-    OPENAI_API_KEY — API key (takes precedence over HF_TOKEN)
+    HF_TOKEN       — Fallback API key
+    IMAGE_NAME     — Docker image name (if using from_docker_image)
     ENV_URL        — Environment server URL (default: http://localhost:7860)
     TASK_NAME      — Task to run (default: task_001)
-    IMAGE_NAME     — Docker image name (if set, uses from_docker_image)
 """
 
 from __future__ import annotations
@@ -26,20 +26,14 @@ import os
 import sys
 from typing import List, Optional
 
-try:
-    from openai import OpenAI
-except ImportError:
-    print("Error: openai package not installed. Run: pip install openai", flush=True)
-    sys.exit(1)
-
+from openai import OpenAI
 from openenv.core import GenericAction, GenericEnvClient
 
 # ---------------------------------------------------------------------------
-# Configuration from environment variables
+# Configuration — evaluator injects API_BASE_URL and API_KEY
 # ---------------------------------------------------------------------------
-# Evaluator injects API_BASE_URL and API_KEY — read them directly
-API_BASE_URL = os.environ.get("API_BASE_URL") or "https://api.openai.com/v1"
-MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o"
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o")
 API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY") or ""
 ENV_URL = os.environ.get("ENV_URL", "http://localhost:7860")
 IMAGE_NAME = os.environ.get("IMAGE_NAME", "")
@@ -47,16 +41,14 @@ TASK_NAME = os.environ.get("TASK_NAME", "task_001")
 BENCHMARK = "pytorch-training-debugger"
 
 MAX_STEPS = 25
-# Max achievable reward: +0.50 (diagnosis) +0.40 (convergence) +5*0.05 (investigations)
-# minus step penalties. Use 1.15 as the theoretical ceiling for normalization.
 MAX_TOTAL_REWARD = 1.15
 SUCCESS_SCORE_THRESHOLD = 0.5
 TEMPERATURE = 0.0
 MAX_TOKENS = 300
-FALLBACK_ACTION = '{"action_type": "inspect_gradients"}'
+MAX_RETRIES = 3
 
 # ---------------------------------------------------------------------------
-# Structured logging — [START]/[STEP]/[END] format (hackathon requirement)
+# Structured logging — [START]/[STEP]/[END] format
 # ---------------------------------------------------------------------------
 
 
@@ -84,7 +76,7 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 
 
 # ---------------------------------------------------------------------------
-# System prompt for the LLM agent
+# System prompt
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """You are an expert ML engineer debugging a PyTorch training run.
 You are interacting with an environment that simulates a broken training job.
@@ -158,7 +150,7 @@ def get_model_message(
     last_reward: float,
     history: List[str],
 ) -> str:
-    """Get next action from the LLM."""
+    """Get next action from the LLM. Retries on failure — never silently skips."""
     history_ctx = "\n".join(history[-5:]) if history else "No previous steps."
     user_content = (
         f"Step {step}. Last reward: {last_reward:+.2f}\n"
@@ -167,21 +159,27 @@ def get_model_message(
         f"{json.dumps(last_obs_summary, indent=2, default=str)}\n\n"
         "What action should you take next? Respond with JSON only."
     )
-    try:
-        completion = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=TEMPERATURE,
-            max_tokens=MAX_TOKENS,
-        )
-        text = (completion.choices[0].message.content or "").strip()
-        return text if text else FALLBACK_ACTION
-    except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
-        return FALLBACK_ACTION
+
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            completion = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=TEMPERATURE,
+                max_tokens=MAX_TOKENS,
+            )
+            text = (completion.choices[0].message.content or "").strip()
+            return text if text else '{"action_type": "inspect_gradients"}'
+        except Exception as exc:
+            last_error = exc
+            print(f"[DEBUG] LLM attempt {attempt}/{MAX_RETRIES} failed: {exc}", flush=True)
+
+    # All retries failed — raise so the caller knows LLM is broken
+    raise RuntimeError(f"LLM failed after {MAX_RETRIES} attempts: {last_error}")
 
 
 def parse_action(raw: str) -> str:
@@ -193,7 +191,7 @@ def parse_action(raw: str) -> str:
         json.loads(text)
         return text
     except json.JSONDecodeError:
-        return FALLBACK_ACTION
+        return '{"action_type": "inspect_gradients"}'
 
 
 async def main() -> None:
@@ -210,13 +208,14 @@ async def main() -> None:
         if not API_KEY:
             raise RuntimeError("API_KEY, HF_TOKEN, or OPENAI_API_KEY required.")
 
-        print(f"[DEBUG] Using API_BASE_URL={API_BASE_URL}", flush=True)
-        print(f"[DEBUG] Using MODEL_NAME={MODEL_NAME}", flush=True)
+        print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
+        print(f"[DEBUG] MODEL_NAME={MODEL_NAME}", flush=True)
         print(f"[DEBUG] API_KEY source: {'API_KEY' if os.environ.get('API_KEY') else 'HF_TOKEN' if os.environ.get('HF_TOKEN') else 'OPENAI_API_KEY'}", flush=True)
 
+        # Initialize OpenAI client with evaluator-provided credentials
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-        # Connect to environment via standard OpenEnv client
+        # Connect to environment
         if IMAGE_NAME:
             env = await GenericEnvClient.from_docker_image(IMAGE_NAME)
         else:
@@ -259,18 +258,18 @@ async def main() -> None:
                 break
 
         score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD > 0 else 0.0
-        score = min(max(score, 0.01), 0.99)  # clamp to (0, 1) exclusive
+        score = min(max(score, 0.01), 0.99)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as exc:
-        print(f"[DEBUG] Unhandled error: {exc}", flush=True)
+        print(f"[DEBUG] Error: {exc}", flush=True)
 
     finally:
         if env is not None:
             try:
                 await env.close()
             except Exception as e:
-                print(f"[DEBUG] env.close() error (container cleanup): {e}", flush=True)
+                print(f"[DEBUG] env.close() error: {e}", flush=True)
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
