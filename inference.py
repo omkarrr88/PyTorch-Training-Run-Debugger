@@ -37,9 +37,10 @@ from openenv.core import GenericAction, GenericEnvClient
 # ---------------------------------------------------------------------------
 # Configuration from environment variables
 # ---------------------------------------------------------------------------
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o")
-API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY", "")
+# Evaluator injects API_BASE_URL and API_KEY — read them directly
+API_BASE_URL = os.environ.get("API_BASE_URL") or "https://api.openai.com/v1"
+MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o"
+API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY") or ""
 ENV_URL = os.environ.get("ENV_URL", "http://localhost:7860")
 IMAGE_NAME = os.environ.get("IMAGE_NAME", "")
 TASK_NAME = os.environ.get("TASK_NAME", "task_001")
@@ -207,7 +208,11 @@ async def main() -> None:
 
     try:
         if not API_KEY:
-            raise RuntimeError("OPENAI_API_KEY or HF_TOKEN required.")
+            raise RuntimeError("API_KEY, HF_TOKEN, or OPENAI_API_KEY required.")
+
+        print(f"[DEBUG] Using API_BASE_URL={API_BASE_URL}", flush=True)
+        print(f"[DEBUG] Using MODEL_NAME={MODEL_NAME}", flush=True)
+        print(f"[DEBUG] API_KEY source: {'API_KEY' if os.environ.get('API_KEY') else 'HF_TOKEN' if os.environ.get('HF_TOKEN') else 'OPENAI_API_KEY'}", flush=True)
 
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
