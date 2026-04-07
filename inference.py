@@ -196,30 +196,28 @@ def parse_action(raw: str) -> str:
 
 
 async def main() -> None:
-    if not API_KEY:
-        print(
-            "Error: OPENAI_API_KEY or HF_TOKEN required.", flush=True
-        )
-        sys.exit(1)
-
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-
-    # Connect to environment via standard OpenEnv client
-    if IMAGE_NAME:
-        env = await GenericEnvClient.from_docker_image(IMAGE_NAME)
-    else:
-        env = GenericEnvClient(base_url=ENV_URL, message_timeout_s=120.0)
-        await env.connect()
-
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
     score = 0.0
     success = False
+    env = None
 
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
+        if not API_KEY:
+            raise RuntimeError("OPENAI_API_KEY or HF_TOKEN required.")
+
+        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+
+        # Connect to environment via standard OpenEnv client
+        if IMAGE_NAME:
+            env = await GenericEnvClient.from_docker_image(IMAGE_NAME)
+        else:
+            env = GenericEnvClient(base_url=ENV_URL, message_timeout_s=120.0)
+            await env.connect()
+
         result = await env.reset(task_id=TASK_NAME, seed=42)
         obs = result.observation
         last_reward = 0.0
@@ -259,11 +257,15 @@ async def main() -> None:
         score = min(max(score, 0.0), 1.0)  # clamp to [0, 1]
         success = score >= SUCCESS_SCORE_THRESHOLD
 
+    except Exception as exc:
+        print(f"[DEBUG] Unhandled error: {exc}", flush=True)
+
     finally:
-        try:
-            await env.close()
-        except Exception as e:
-            print(f"[DEBUG] env.close() error (container cleanup): {e}", flush=True)
+        if env is not None:
+            try:
+                await env.close()
+            except Exception as e:
+                print(f"[DEBUG] env.close() error (container cleanup): {e}", flush=True)
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
