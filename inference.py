@@ -20,14 +20,13 @@ from openai import OpenAI
 from openenv.core import GenericAction, GenericEnvClient
 
 # ---------------------------------------------------------------------------
-# Configuration — evaluator injects API_BASE_URL and API_KEY
+# Configuration — matches sample inference script exactly
 # ---------------------------------------------------------------------------
 IMAGE_NAME = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://api.openai.com/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-4o"
-ENV_URL = os.getenv("ENV_URL") or "https://ujjwalpardeshi-pytorch-training-debugger.hf.space"
 TASK_NAME = os.getenv("TASK_NAME") or "task_001"
 BENCHMARK = "pytorch-training-debugger"
 
@@ -189,40 +188,21 @@ async def main() -> None:
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        # ---- 1. Create OpenAI client with evaluator credentials ----
-        print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
-        print(f"[DEBUG] MODEL_NAME={MODEL_NAME}", flush=True)
-        print(f"[DEBUG] API_KEY set: {bool(API_KEY)}", flush=True)
-        print(f"[DEBUG] IMAGE_NAME={IMAGE_NAME}", flush=True)
-        print(f"[DEBUG] ENV_URL={ENV_URL}", flush=True)
-
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-        # ---- 2. Test LLM call to guarantee proxy is used ----
-        print("[DEBUG] Making test LLM call...", flush=True)
-        test_resp = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": "Say hello in one word."}],
-            max_tokens=10,
-        )
-        print(f"[DEBUG] Test LLM call succeeded: {test_resp.choices[0].message.content}", flush=True)
-
-        # ---- 3. Connect to environment ----
+        # Connect to environment — same pattern as sample script
         if IMAGE_NAME:
-            print(f"[DEBUG] Connecting via from_docker_image({IMAGE_NAME})", flush=True)
             env = await GenericEnvClient.from_docker_image(IMAGE_NAME)
         else:
-            print(f"[DEBUG] Connecting via GenericEnvClient({ENV_URL})", flush=True)
-            env = GenericEnvClient(base_url=ENV_URL, message_timeout_s=120.0)
+            env = GenericEnvClient(
+                base_url=os.getenv("ENV_URL", "https://ujjwalpardeshi-pytorch-training-debugger.hf.space"),
+                message_timeout_s=120.0,
+            )
             await env.connect()
 
-        print("[DEBUG] Environment connected", flush=True)
-
-        # ---- 4. Run episode ----
         result = await env.reset(task_id=TASK_NAME, seed=42)
         obs = result.observation
         last_reward = 0.0
-        print(f"[DEBUG] Reset done. result.done={result.done}", flush=True)
 
         for step in range(1, MAX_STEPS + 1):
             if result.done:
