@@ -256,6 +256,7 @@ async def main() -> None:
     print(f"[DEBUG] API_KEY={'set' if API_KEY else 'NOT SET'} (source={'API_KEY' if os.getenv('API_KEY') else 'HF_TOKEN' if os.getenv('HF_TOKEN') else 'NONE'})", flush=True)
     print(f"[DEBUG] Tasks to run: {tasks_to_run}", flush=True)
 
+    completed_tasks: set = set()
     env = None
     try:
         if IMAGE_NAME:
@@ -269,11 +270,17 @@ async def main() -> None:
 
         for task_id in tasks_to_run:
             await run_task(env, client, task_id)
+            completed_tasks.add(task_id)
 
     except Exception as exc:
         print(f"[DEBUG] Fatal error: {exc}", flush=True)
 
     finally:
+        # Emit [START]/[END] for any tasks that didn't run (e.g. env connection failed)
+        for task_id in tasks_to_run:
+            if task_id not in completed_tasks:
+                log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
+                log_end(task=task_id, success=False, steps=0, score=0.01, rewards=[])
         if env is not None:
             try:
                 await env.close()
