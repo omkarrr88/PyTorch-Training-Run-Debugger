@@ -21,13 +21,13 @@ from openai import OpenAI
 from openenv.core import GenericAction, GenericEnvClient
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration — use evaluator-injected env vars EXACTLY as documented
 # ---------------------------------------------------------------------------
 IMAGE_NAME = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
-API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://api.openai.com/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-4o"
-ENV_URL = os.getenv("ENV_URL", "https://ujjwalpardeshi-pytorch-training-debugger.hf.space")
+API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN", "")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o")
+ENV_URL = os.environ.get("ENV_URL", "https://ujjwalpardeshi-pytorch-training-debugger.hf.space")
 BENCHMARK = "pytorch-training-debugger"
 
 MAX_STEPS = 25
@@ -250,7 +250,7 @@ async def main() -> None:
     target_task = os.getenv("TASK_NAME")
     tasks_to_run = [target_task] if target_task else ALL_TASK_IDS
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "dummy")
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
     print(f"[DEBUG] API_KEY={'set' if API_KEY else 'NOT SET'} (source={'API_KEY' if os.getenv('API_KEY') else 'HF_TOKEN' if os.getenv('HF_TOKEN') else 'NONE'})", flush=True)
