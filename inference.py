@@ -56,10 +56,10 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
     )
 
 
-def log_end(success: bool, steps: int, rewards: List[float]) -> None:
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(
-        f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}",
         flush=True,
     )
 
@@ -191,6 +191,7 @@ async def run_task(env: GenericEnvClient, client: OpenAI, task_id: str) -> None:
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
+    score = 0.01
     success = False
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -230,14 +231,17 @@ async def run_task(env: GenericEnvClient, client: OpenAI, task_id: str) -> None:
             if done:
                 break
 
+        # Score: clamp strictly between 0 and 1 (evaluator rejects 0.0 and 1.0)
         total_reward = sum(rewards)
-        success = total_reward >= SUCCESS_SCORE_THRESHOLD
+        score = round(min(max(total_reward, 0.01), 0.99), 2)
+        success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as exc:
         print(f"[DEBUG] Task {task_id} error: {exc}", flush=True)
+        score = 0.01
 
     finally:
-        log_end(success=success, steps=steps_taken, rewards=rewards)
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
 async def main() -> None:
@@ -288,7 +292,7 @@ async def main() -> None:
         for task_id in tasks_to_run:
             if task_id not in completed_tasks:
                 log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
-                log_end(success=False, steps=0, rewards=[])
+                log_end(success=False, steps=0, score=0.01, rewards=[])
         if env is not None:
             try:
                 await env.close()
