@@ -197,6 +197,15 @@ async def main() -> None:
     try:
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
+        # --- Verify LLM proxy works BEFORE connecting to env ---
+        print("[DEBUG] Testing LLM proxy connection...", flush=True)
+        test_resp = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": "Say OK"}],
+            max_tokens=5,
+        )
+        print(f"[DEBUG] LLM proxy test OK: {test_resp.choices[0].message.content}", flush=True)
+
         # Connect to environment — same pattern as sample script
         if IMAGE_NAME:
             env = await GenericEnvClient.from_docker_image(IMAGE_NAME)
