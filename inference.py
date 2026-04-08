@@ -210,7 +210,7 @@ async def run_task(env: GenericEnvClient, client: OpenAI, task_id: str) -> None:
             raw = get_model_message(client, step, obs_summary, last_reward, history)
             action_str = parse_action(raw)
 
-            action = GenericAction(json.loads(action_str))
+            action = GenericAction(**json.loads(action_str))
             result = await env.step(action)
             obs = result.observation
 
