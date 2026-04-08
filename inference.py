@@ -6,6 +6,7 @@ Required environment variables (injected by evaluator):
     API_KEY        — LiteLLM proxy key
     MODEL_NAME     — Model to use
     IMAGE_NAME     — Docker image for the environment (optional)
+    ENV_URL        — Environment URL (HF Space)
 """
 
 from __future__ import annotations
@@ -20,24 +21,25 @@ from openai import OpenAI
 from openenv.core import GenericAction, GenericEnvClient
 
 # ---------------------------------------------------------------------------
-# Configuration — matches sample inference script exactly
+# Configuration
 # ---------------------------------------------------------------------------
 IMAGE_NAME = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
 API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
-
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://api.openai.com/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-4o"
-TASK_NAME = os.getenv("TASK_NAME") or "task_001"
+ENV_URL = os.getenv("ENV_URL", "https://ujjwalpardeshi-pytorch-training-debugger.hf.space")
 BENCHMARK = "pytorch-training-debugger"
 
 MAX_STEPS = 25
-MAX_TOTAL_REWARD = 1.15
 SUCCESS_SCORE_THRESHOLD = 0.5
 TEMPERATURE = 0.0
 MAX_TOKENS = 300
 
+# All tasks to run — evaluator expects ALL tasks with graders
+ALL_TASK_IDS = ["task_001", "task_002", "task_003", "task_004", "task_005", "task_006", "task_007"]
+
 # ---------------------------------------------------------------------------
-# Structured logging
+# Structured logging — matches evaluator's expected format
 # ---------------------------------------------------------------------------
 
 
@@ -45,21 +47,20 @@ def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
 
-def log_step(
-    step: int, action: str, reward: float, done: bool, error: Optional[str]
-) -> None:
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
     error_val = error if error else "null"
     done_val = str(done).lower()
+    clean_action = action.replace("\n", " ").replace("\r", " ")
     print(
-        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        f"[STEP] step={step} action={clean_action} reward={reward:.2f} done={done_val} error={error_val}",
         flush=True,
     )
 
 
-def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+def log_end(task: str, success: bool, steps: int, score: float, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(
-        f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}",
+        f"[END] task={task} success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}",
         flush=True,
     )
 
@@ -138,9 +139,8 @@ def get_model_message(
     last_obs_summary: dict,
     last_reward: float,
     history: List[str],
-    is_first_call: bool = False,
 ) -> str:
-    """Get next action from the LLM."""
+    """Get next action from the LLM with retry logic."""
     history_ctx = "\n".join(history[-5:]) if history else "No previous steps."
     user_content = (
         f"Step {step}. Last reward: {last_reward:+.2f}\n"
@@ -149,24 +149,30 @@ def get_model_message(
         f"{json.dumps(last_obs_summary, indent=2, default=str)}\n\n"
         "What action should you take next? Respond with JSON only."
     )
-    try:
-        completion = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=TEMPERATURE,
-            max_tokens=MAX_TOKENS,
-        )
-        text = (completion.choices[0].message.content or "").strip()
-        return text if text else '{"action_type": "inspect_gradients"}'
-    except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
-        # On first call, re-raise so we know the proxy isn't working
-        if is_first_call:
-            raise
-        return '{"action_type": "inspect_gradients"}'
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            completion = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=TEMPERATURE,
+                max_tokens=MAX_TOKENS,
+            )
+            text = (completion.choices[0].message.content or "").strip()
+            if text:
+                return text
+        except Exception as exc:
+            print(f"[DEBUG] Model request failed (attempt {attempt+1}): {exc}", flush=True)
+            if attempt < max_retries - 1:
+                import time
+                time.sleep((attempt + 1) * 2)
+            else:
+                raise
+    return '{"action_type": "inspect_gradients"}'
 
 
 def parse_action(raw: str) -> str:
@@ -181,42 +187,18 @@ def parse_action(raw: str) -> str:
         return '{"action_type": "inspect_gradients"}'
 
 
-async def main() -> None:
+async def run_task(env: GenericEnvClient, client: OpenAI, task_id: str) -> None:
+    """Run a single task episode with [START]/[END] logging."""
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
     score = 0.0
     success = False
-    env = None
 
-    log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
-    print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
-    print(f"[DEBUG] API_KEY={'set' if API_KEY else 'NOT SET'} (source={'API_KEY' if os.getenv('API_KEY') else 'HF_TOKEN' if os.getenv('HF_TOKEN') else 'NONE'})", flush=True)
-    print(f"[DEBUG] IMAGE_NAME={IMAGE_NAME}", flush=True)
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-
-        # --- Verify LLM proxy works BEFORE connecting to env ---
-        print("[DEBUG] Testing LLM proxy connection...", flush=True)
-        test_resp = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": "Say OK"}],
-            max_tokens=5,
-        )
-        print(f"[DEBUG] LLM proxy test OK: {test_resp.choices[0].message.content}", flush=True)
-
-        # Connect to environment — same pattern as sample script
-        if IMAGE_NAME:
-            env = await GenericEnvClient.from_docker_image(IMAGE_NAME)
-        else:
-            env = GenericEnvClient(
-                base_url=os.getenv("ENV_URL", "https://ujjwalpardeshi-pytorch-training-debugger.hf.space"),
-                message_timeout_s=120.0,
-            )
-            await env.connect()
-
-        result = await env.reset(task_id=TASK_NAME, seed=42)
+        result = await env.reset(task_id=task_id, seed=42)
         obs = result.observation
         last_reward = 0.0
 
@@ -225,10 +207,7 @@ async def main() -> None:
                 break
 
             obs_summary = _build_obs_summary(obs)
-            raw = get_model_message(
-                client, step, obs_summary, last_reward, history,
-                is_first_call=(step == 1),
-            )
+            raw = get_model_message(client, step, obs_summary, last_reward, history)
             action_str = parse_action(raw)
 
             action = GenericAction(json.loads(action_str))
@@ -253,20 +232,53 @@ async def main() -> None:
             if done:
                 break
 
-        score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD > 0 else 0.0
-        score = min(max(score, 0.01), 0.99)
+        # Score: clamp strictly between 0 and 1
+        total_reward = sum(rewards)
+        score = round(min(max(total_reward, 0.01), 0.99), 2)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as exc:
-        print(f"[DEBUG] Error: {exc}", flush=True)
+        print(f"[DEBUG] Task {task_id} error: {exc}", flush=True)
+        score = 0.01
+
+    finally:
+        log_end(task=task_id, success=success, steps=steps_taken, score=score, rewards=rewards)
+
+
+async def main() -> None:
+    # Optional: run specific task or all tasks
+    target_task = os.getenv("TASK_NAME")
+    tasks_to_run = [target_task] if target_task else ALL_TASK_IDS
+
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "dummy")
+
+    print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
+    print(f"[DEBUG] API_KEY={'set' if API_KEY else 'NOT SET'} (source={'API_KEY' if os.getenv('API_KEY') else 'HF_TOKEN' if os.getenv('HF_TOKEN') else 'NONE'})", flush=True)
+    print(f"[DEBUG] Tasks to run: {tasks_to_run}", flush=True)
+
+    env = None
+    try:
+        if IMAGE_NAME:
+            env = await GenericEnvClient.from_docker_image(IMAGE_NAME)
+        else:
+            env = GenericEnvClient(
+                base_url=ENV_URL,
+                message_timeout_s=120.0,
+            )
+            await env.connect()
+
+        for task_id in tasks_to_run:
+            await run_task(env, client, task_id)
+
+    except Exception as exc:
+        print(f"[DEBUG] Fatal error: {exc}", flush=True)
 
     finally:
         if env is not None:
             try:
                 await env.close()
-            except Exception as e:
-                print(f"[DEBUG] env.close() error: {e}", flush=True)
-        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
