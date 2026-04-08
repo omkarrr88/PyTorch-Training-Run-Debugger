@@ -23,7 +23,7 @@ from openenv.core import GenericAction, GenericEnvClient
 # Configuration — matches sample inference script exactly
 # ---------------------------------------------------------------------------
 IMAGE_NAME = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
 
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://api.openai.com/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-4o"
@@ -138,6 +138,7 @@ def get_model_message(
     last_obs_summary: dict,
     last_reward: float,
     history: List[str],
+    is_first_call: bool = False,
 ) -> str:
     """Get next action from the LLM."""
     history_ctx = "\n".join(history[-5:]) if history else "No previous steps."
@@ -162,6 +163,9 @@ def get_model_message(
         return text if text else '{"action_type": "inspect_gradients"}'
     except Exception as exc:
         print(f"[DEBUG] Model request failed: {exc}", flush=True)
+        # On first call, re-raise so we know the proxy isn't working
+        if is_first_call:
+            raise
         return '{"action_type": "inspect_gradients"}'
 
 
@@ -186,6 +190,9 @@ async def main() -> None:
     env = None
 
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
+    print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
+    print(f"[DEBUG] API_KEY={'set' if API_KEY else 'NOT SET'} (source={'API_KEY' if os.getenv('API_KEY') else 'HF_TOKEN' if os.getenv('HF_TOKEN') else 'NONE'})", flush=True)
+    print(f"[DEBUG] IMAGE_NAME={IMAGE_NAME}", flush=True)
 
     try:
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
@@ -209,7 +216,10 @@ async def main() -> None:
                 break
 
             obs_summary = _build_obs_summary(obs)
-            raw = get_model_message(client, step, obs_summary, last_reward, history)
+            raw = get_model_message(
+                client, step, obs_summary, last_reward, history,
+                is_first_call=(step == 1),
+            )
             action_str = parse_action(raw)
 
             action = GenericAction(json.loads(action_str))
