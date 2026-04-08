@@ -21,7 +21,7 @@ Built for the Meta PyTorch OpenEnv Hackathon x Scaler School of Technology, 2026
 
 ---
 
-## Why I Built This
+## Why we Built This
 
 Every ML engineer has been there: your model trains for hours, doesn't crash, doesn't throw errors, but the loss just won't go down. You stare at TensorBoard, tweak the learning rate, restart, repeat. It's tedious, time-consuming, and hard to teach. I wanted to turn that debugging experience into an RL environment so agents can learn to do it too.
 
