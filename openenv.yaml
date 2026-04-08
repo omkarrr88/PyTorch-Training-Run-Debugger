@@ -36,12 +36,14 @@ tasks:
   - id: task_001
     difficulty: easy
     max_steps: 20
+    has_grader: true
     param_ranges:
       learning_rate: [0.05, 0.08, 0.10, 0.15, 0.30]
 
   - id: task_002
     difficulty: easy
     max_steps: 20
+    has_grader: true
     param_ranges:
       learning_rate: [1e-6, 5e-6, 1e-5]
       depth_multiplier: [1.0, 1.5, 2.0]
@@ -49,12 +51,14 @@ tasks:
   - id: task_003
     difficulty: medium
     max_steps: 25
+    has_grader: true
     param_ranges:
       leakage_pct: [0.12, 0.18, 0.22, 0.28]
 
   - id: task_004
     difficulty: medium
     max_steps: 25
+    has_grader: true
     param_ranges:
       weight_decay: [0.0, 0.0001, 0.001]
       divergence_epoch: [5, 8, 12]
@@ -62,18 +66,21 @@ tasks:
   - id: task_005
     difficulty: hard
     max_steps: 30
+    has_grader: true
     param_ranges:
       red_herring_intensity: [0.8, 2.5]
 
   - id: task_006
     difficulty: hard
     max_steps: 30
+    has_grader: true
     param_ranges:
       bug_type: [eval_mode, detach_loss, zero_grad_missing, inplace_relu]
 
   - id: task_007
     difficulty: hard
     max_steps: 25
+    has_grader: true
     param_ranges:
       scheduler_gamma: [0.01, 0.001, 0.0001]
       scheduler_step_size: [2, 3, 5]

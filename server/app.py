@@ -46,13 +46,13 @@ logger = logging.getLogger(__name__)
 
 # All 7 tasks
 ALL_TASKS = [
-    {"id": "task_001", "difficulty": "easy", "max_steps": 20},
-    {"id": "task_002", "difficulty": "easy", "max_steps": 20},
-    {"id": "task_003", "difficulty": "medium", "max_steps": 25},
-    {"id": "task_004", "difficulty": "medium", "max_steps": 25},
-    {"id": "task_005", "difficulty": "hard", "max_steps": 30},
-    {"id": "task_006", "difficulty": "hard", "max_steps": 30},
-    {"id": "task_007", "difficulty": "hard", "max_steps": 25},
+    {"id": "task_001", "difficulty": "easy", "max_steps": 20, "has_grader": True},
+    {"id": "task_002", "difficulty": "easy", "max_steps": 20, "has_grader": True},
+    {"id": "task_003", "difficulty": "medium", "max_steps": 25, "has_grader": True},
+    {"id": "task_004", "difficulty": "medium", "max_steps": 25, "has_grader": True},
+    {"id": "task_005", "difficulty": "hard", "max_steps": 30, "has_grader": True},
+    {"id": "task_006", "difficulty": "hard", "max_steps": 30, "has_grader": True},
+    {"id": "task_007", "difficulty": "hard", "max_steps": 25, "has_grader": True},
 ]
 
 # create_app takes the class (factory), not an instance
