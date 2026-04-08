@@ -2,11 +2,9 @@
 """Inference script for the PyTorch Training Run Debugger.
 
 Required environment variables (injected by evaluator):
-    API_BASE_URL   — LiteLLM proxy endpoint
-    API_KEY        — LiteLLM proxy key
-    MODEL_NAME     — Model to use
-    IMAGE_NAME     — Docker image for the environment (optional)
-    ENV_URL        — Environment URL (HF Space)
+    API_BASE_URL   — LLM API endpoint (must have default)
+    MODEL_NAME     — Model identifier (must have default)
+    HF_TOKEN       — API token (mandatory, no default)
 """
 
 from __future__ import annotations
@@ -21,13 +19,14 @@ from openai import OpenAI
 from openenv.core import GenericAction, GenericEnvClient
 
 # ---------------------------------------------------------------------------
-# Configuration — use evaluator-injected env vars EXACTLY as documented
+# Configuration — EXACTLY per hackathon spec
 # ---------------------------------------------------------------------------
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
+HF_TOKEN = os.getenv("HF_TOKEN")
+
 IMAGE_NAME = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
-API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN", "")
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o")
-ENV_URL = os.environ.get("ENV_URL", "https://ujjwalpardeshi-pytorch-training-debugger.hf.space")
+ENV_URL = os.getenv("ENV_URL", "https://ujjwalpardeshi-pytorch-training-debugger.hf.space")
 BENCHMARK = "pytorch-training-debugger"
 
 MAX_STEPS = 25
@@ -35,11 +34,11 @@ SUCCESS_SCORE_THRESHOLD = 0.5
 TEMPERATURE = 0.0
 MAX_TOKENS = 300
 
-# All tasks to run — evaluator expects ALL tasks with graders
+# All tasks to run
 ALL_TASK_IDS = ["task_001", "task_002", "task_003", "task_004", "task_005", "task_006", "task_007"]
 
 # ---------------------------------------------------------------------------
-# Structured logging — matches evaluator's expected format
+# Structured logging — EXACTLY per hackathon spec
 # ---------------------------------------------------------------------------
 
 
@@ -57,10 +56,10 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
     )
 
 
-def log_end(task: str, success: bool, steps: int, score: float, rewards: List[float]) -> None:
+def log_end(success: bool, steps: int, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(
-        f"[END] task={task} success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}",
         flush=True,
     )
 
@@ -192,7 +191,6 @@ async def run_task(env: GenericEnvClient, client: OpenAI, task_id: str) -> None:
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
     success = False
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -232,17 +230,14 @@ async def run_task(env: GenericEnvClient, client: OpenAI, task_id: str) -> None:
             if done:
                 break
 
-        # Score: clamp strictly between 0 and 1
         total_reward = sum(rewards)
-        score = round(min(max(total_reward, 0.01), 0.99), 2)
-        success = score >= SUCCESS_SCORE_THRESHOLD
+        success = total_reward >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as exc:
         print(f"[DEBUG] Task {task_id} error: {exc}", flush=True)
-        score = 0.01
 
     finally:
-        log_end(task=task_id, success=success, steps=steps_taken, score=score, rewards=rewards)
+        log_end(success=success, steps=steps_taken, rewards=rewards)
 
 
 async def main() -> None:
@@ -250,11 +245,24 @@ async def main() -> None:
     target_task = os.getenv("TASK_NAME")
     tasks_to_run = [target_task] if target_task else ALL_TASK_IDS
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    # Initialize client EXACTLY as spec: api_key=HF_TOKEN
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
-    print(f"[DEBUG] API_KEY={'set' if API_KEY else 'NOT SET'} (source={'API_KEY' if os.getenv('API_KEY') else 'HF_TOKEN' if os.getenv('HF_TOKEN') else 'NONE'})", flush=True)
+    print(f"[DEBUG] HF_TOKEN={'set' if HF_TOKEN else 'NOT SET'}", flush=True)
+    print(f"[DEBUG] MODEL_NAME={MODEL_NAME}", flush=True)
     print(f"[DEBUG] Tasks to run: {tasks_to_run}", flush=True)
+
+    # Mandatory LLM proxy call — ensures at least one call goes through
+    try:
+        test_resp = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": "Say OK"}],
+            max_tokens=5,
+        )
+        print(f"[DEBUG] LLM proxy test OK: {test_resp.choices[0].message.content}", flush=True)
+    except Exception as exc:
+        print(f"[DEBUG] LLM proxy test failed: {exc}", flush=True)
 
     completed_tasks: set = set()
     env = None
@@ -276,11 +284,11 @@ async def main() -> None:
         print(f"[DEBUG] Fatal error: {exc}", flush=True)
 
     finally:
-        # Emit [START]/[END] for any tasks that didn't run (e.g. env connection failed)
+        # Emit [START]/[END] for any tasks that didn't run
         for task_id in tasks_to_run:
             if task_id not in completed_tasks:
                 log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
-                log_end(task=task_id, success=False, steps=0, score=0.01, rewards=[])
+                log_end(success=False, steps=0, rewards=[])
         if env is not None:
             try:
                 await env.close()
